@@ -1,0 +1,293 @@
+{
+  "image": "sample_0014.png",
+  "image_width": 1024,
+  "image_height": 1024,
+  "units": "pixels",
+  "rooms": [
+    {
+      "id": "room_1",
+      "type": "undivided",
+      "polygon": [
+        [
+          100.0,
+          133.33
+        ],
+        [
+          550.0,
+          133.33
+        ],
+        [
+          550.0,
+          506.67
+        ],
+        [
+          100.0,
+          506.67
+        ]
+      ],
+      "area_pixels": 168003.0,
+      "confidence": 1.0
+    },
+    {
+      "id": "room_2",
+      "type": "undivided",
+      "polygon": [
+        [
+          550.0,
+          133.33
+        ],
+        [
+          920.0,
+          133.33
+        ],
+        [
+          920.0,
+          506.67
+        ],
+        [
+          550.0,
+          506.67
+        ]
+      ],
+      "area_pixels": 138135.8,
+      "confidence": 1.0
+    },
+    {
+      "id": "room_3",
+      "type": "undivided",
+      "polygon": [
+        [
+          100.0,
+          506.67
+        ],
+        [
+          550.0,
+          506.67
+        ],
+        [
+          550.0,
+          933.33
+        ],
+        [
+          100.0,
+          933.33
+        ]
+      ],
+      "area_pixels": 191997.0,
+      "confidence": 1.0
+    },
+    {
+      "id": "room_4",
+      "type": "undivided",
+      "polygon": [
+        [
+          550.0,
+          506.67
+        ],
+        [
+          920.0,
+          506.67
+        ],
+        [
+          920.0,
+          933.33
+        ],
+        [
+          550.0,
+          933.33
+        ]
+      ],
+      "area_pixels": 157864.2,
+      "confidence": 1.0
+    }
+  ],
+  "walls": [
+    {
+      "id": "wall_1",
+      "start": [
+        100.0,
+        133.33
+      ],
+      "end": [
+        920.0,
+        133.33
+      ],
+      "thickness": 12.0,
+      "confidence": 1.0
+    },
+    {
+      "id": "wall_2",
+      "start": [
+        920.0,
+        133.33
+      ],
+      "end": [
+        920.0,
+        933.33
+      ],
+      "thickness": 12.0,
+      "confidence": 1.0
+    },
+    {
+      "id": "wall_3",
+      "start": [
+        920.0,
+        933.33
+      ],
+      "end": [
+        100.0,
+        933.33
+      ],
+      "thickness": 12.0,
+      "confidence": 1.0
+    },
+    {
+      "id": "wall_4",
+      "start": [
+        100.0,
+        933.33
+      ],
+      "end": [
+        100.0,
+        133.33
+      ],
+      "thickness": 12.0,
+      "confidence": 1.0
+    },
+    {
+      "id": "wall_5",
+      "start": [
+        550.0,
+        133.33
+      ],
+      "end": [
+        550.0,
+        933.33
+      ],
+      "thickness": 8.0,
+      "confidence": 1.0
+    },
+    {
+      "id": "wall_6",
+      "start": [
+        100.0,
+        506.67
+      ],
+      "end": [
+        920.0,
+        506.67
+      ],
+      "thickness": 8.0,
+      "confidence": 1.0
+    }
+  ],
+  "doors": [
+    {
+      "id": "door_1",
+      "bbox": [
+        275.0,
+        493.33,
+        335.0,
+        520.0
+      ],
+      "position": [
+        305.0,
+        506.67
+      ],
+      "orientation": "horizontal",
+      "confidence": 1.0
+    },
+    {
+      "id": "door_2",
+      "bbox": [
+        735.0,
+        493.33,
+        795.0,
+        520.0
+      ],
+      "position": [
+        765.0,
+        506.67
+      ],
+      "orientation": "horizontal",
+      "confidence": 1.0
+    },
+    {
+      "id": "door_3",
+      "bbox": [
+        540.0,
+        253.33,
+        560.0,
+        333.33
+      ],
+      "position": [
+        550.0,
+        293.33
+      ],
+      "orientation": "vertical",
+      "confidence": 1.0
+    }
+  ],
+  "windows": [
+    {
+      "id": "window_1",
+      "bbox": [
+        220.0,
+        126.67,
+        320.0,
+        146.67
+      ],
+      "position": [
+        270.0,
+        136.67
+      ],
+      "orientation": "horizontal",
+      "confidence": 1.0
+    },
+    {
+      "id": "window_2",
+      "bbox": [
+        680.0,
+        126.67,
+        780.0,
+        146.67
+      ],
+      "position": [
+        730.0,
+        136.67
+      ],
+      "orientation": "horizontal",
+      "confidence": 1.0
+    },
+    {
+      "id": "window_3",
+      "bbox": [
+        220.0,
+        926.67,
+        320.0,
+        946.67
+      ],
+      "position": [
+        270.0,
+        936.67
+      ],
+      "orientation": "horizontal",
+      "confidence": 1.0
+    },
+    {
+      "id": "window_4",
+      "bbox": [
+        680.0,
+        926.67,
+        780.0,
+        946.67
+      ],
+      "position": [
+        730.0,
+        936.67
+      ],
+      "orientation": "horizontal",
+      "confidence": 1.0
+    }
+  ]
+}

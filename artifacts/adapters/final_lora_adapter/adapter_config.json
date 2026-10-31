@@ -1,0 +1,8 @@
+{
+  "model_type": "floorplan_vlm_adapter",
+  "vocab_size": 2000,
+  "hidden_dim": 128,
+  "peft_type": "LORA",
+  "r": 16,
+  "lora_alpha": 32
+}

@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Checkpoints and Large Model Weights
+artifacts/checkpoints/
+artifacts/adapters/*/checkpoint-*
+*.bin
+*.pt
+*.pth
+*.safetensors
+*.onnx
+
+# Dataset raw large files (keep directory structure and README)
+dataset/raw/*
+!dataset/raw/README.md
+!dataset/raw/.gitkeep
+
+# Outputs generated at runtime
+outputs/predictions/*
+!outputs/predictions/.gitkeep
+outputs/visualizations/*
+!outputs/visualizations/.gitkeep
+
+# OS & IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log

@@ -1,0 +1,9 @@
+Model,Class,Precision,Recall,F1-Score,Micro_F1,Mean_IoU,Mean_Coord_Error_px,True_Positives,False_Positives,False_Negatives
+Calibrated Pipeline,Walls,0.25,0.5,0.3333,0.3333,0.0,12.44,9,27,9
+Calibrated Pipeline,Doors,0.0,0.0,0.0,0.0,0.0,0.0,0,9,9
+Calibrated Pipeline,Windows,0.0,0.0,0.0,0.0,0.0,0.0,0,6,12
+Calibrated Pipeline,Rooms,1.0,1.0,1.0,1.0,0.7798,0.0,12,0,0
+Raw Baseline,Walls,0.25,0.5,0.3333,0.3333,0.0,12.44,9,27,9
+Raw Baseline,Doors,0.0,0.0,0.0,0.0,0.0,0.0,0,9,9
+Raw Baseline,Windows,0.0,0.0,0.0,0.0,0.0,0.0,0,9,12
+Raw Baseline,Rooms,1.0,1.0,1.0,1.0,0.7798,0.0,12,0,0

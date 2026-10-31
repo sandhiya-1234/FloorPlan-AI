@@ -1,0 +1,106 @@
+# ==============================================================================
+# FloorPlan-AI: 2D Floor Plan Detection via Fine-Tuned Vision-Language Models
+# Central Configuration File
+# ==============================================================================
+
+project:
+  name: "floorplan-ai"
+  version: "1.0.0"
+  seed: 42
+
+paths:
+  dataset_root: "dataset"
+  raw_dir: "dataset/raw"
+  processed_dir: "dataset/processed"
+  train_dir: "dataset/train"
+  val_dir: "dataset/validation"
+  test_dir: "dataset/test"
+  samples_dir: "samples"
+  artifacts_dir: "artifacts"
+  adapters_dir: "artifacts/adapters"
+  checkpoints_dir: "artifacts/checkpoints"
+  logs_dir: "artifacts/training_logs"
+  predictions_dir: "outputs/predictions"
+  visualizations_dir: "outputs/visualizations"
+  evaluation_dir: "outputs/evaluation"
+
+model:
+  base_model_name: "Qwen/Qwen2.5-VL-3B-Instruct"
+  fallback_model_name: "Qwen/Qwen2-VL-2B-Instruct"
+  load_in_4bit: true
+  bnb_4bit_compute_dtype: "bfloat16" # or float16 on T4
+  bnb_4bit_quant_type: "nf4"
+  use_nested_quant: true
+  max_image_pixels: 1048576 # 1024 x 1024
+  min_image_pixels: 65536   # 256 x 256
+  prompt_template: |
+    Analyze this 2D architectural floor plan image and detect all architectural elements: walls, doors, windows, and rooms.
+    Return ONLY a valid JSON object matching the required schema with keys: 'image_width', 'image_height', 'units', 'rooms', 'walls', 'doors', 'windows'.
+    Ensure all coordinates are scaled accurately to image dimensions and geometry is consistent.
+
+preprocessing:
+  image_size: 1024
+  normalize_coords: false # Coordinates kept in absolute image pixels
+  enhance_contrast: true
+  denoise: false
+  classes:
+    - "wall"
+    - "door"
+    - "window"
+    - "room"
+  room_types:
+    - "bedroom"
+    - "bathroom"
+    - "kitchen"
+    - "living_room"
+    - "dining_room"
+    - "corridor"
+    - "balcony"
+    - "storage"
+    - "office"
+    - "undivided"
+
+training:
+  learning_rate: 0.0002
+  num_train_epochs: 3
+  per_device_train_batch_size: 1
+  per_device_eval_batch_size: 1
+  gradient_accumulation_steps: 8
+  warmup_ratio: 0.03
+  weight_decay: 0.01
+  logging_steps: 5
+  eval_steps: 50
+  save_steps: 50
+  save_total_limit: 2
+  gradient_checkpointing: true
+  dataloader_num_workers: 2
+  fp16: true
+  bf16: false
+
+lora:
+  r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  bias: "none"
+  target_modules:
+    - "q_proj"
+    - "k_proj"
+    - "v_proj"
+    - "o_proj"
+    - "gate_proj"
+    - "up_proj"
+    - "down_proj"
+
+inference:
+  max_new_tokens: 2048
+  temperature: 0.1
+  top_p: 0.95
+  repetition_penalty: 1.05
+  device: "auto"
+
+postprocessing:
+  snap_tolerance_pixels: 5
+  min_wall_length_pixels: 15
+  min_room_area_pixels: 400
+  iou_duplicate_threshold: 0.75
+  enforce_coordinate_bounds: true

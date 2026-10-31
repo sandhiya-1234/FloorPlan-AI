@@ -1,0 +1,414 @@
+{
+  "evaluation_dataset": "dataset\\test",
+  "test_samples_evaluated": 3,
+  "evaluation_methodology": "Hungarian optimal bipartite assignment (IoU >= 0.5, Wall distance <= 25px)",
+  "fine_tuned_model": {
+    "name": "FloorPlan-AI (Calibrated + Geometric Postprocessing)",
+    "macro_f1": 0.3333,
+    "json_validity_rate": 1.0,
+    "schema_validation_rate": 1.0,
+    "class_metrics": {
+      "walls": {
+        "precision": 0.25,
+        "recall": 0.5,
+        "f1": 0.3333,
+        "micro_f1": 0.3333,
+        "mean_iou": 0.0,
+        "mean_coord_error_px": 12.44,
+        "total_tp": 9,
+        "total_fp": 27,
+        "total_fn": 9
+      },
+      "doors": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "micro_f1": 0.0,
+        "mean_iou": 0.0,
+        "mean_coord_error_px": 0.0,
+        "total_tp": 0,
+        "total_fp": 9,
+        "total_fn": 9
+      },
+      "windows": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "micro_f1": 0.0,
+        "mean_iou": 0.0,
+        "mean_coord_error_px": 0.0,
+        "total_tp": 0,
+        "total_fp": 6,
+        "total_fn": 12
+      },
+      "rooms": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "micro_f1": 1.0,
+        "mean_iou": 0.7798,
+        "mean_coord_error_px": 0.0,
+        "total_tp": 12,
+        "total_fp": 0,
+        "total_fn": 0
+      }
+    }
+  },
+  "base_model": {
+    "name": "Raw Baseline Detector (Unsnapped / Uncalibrated)",
+    "macro_f1": 0.3333,
+    "json_validity_rate": 1.0,
+    "schema_validation_rate": 1.0,
+    "class_metrics": {
+      "walls": {
+        "precision": 0.25,
+        "recall": 0.5,
+        "f1": 0.3333,
+        "micro_f1": 0.3333,
+        "mean_iou": 0.0,
+        "mean_coord_error_px": 12.44,
+        "total_tp": 9,
+        "total_fp": 27,
+        "total_fn": 9
+      },
+      "doors": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "micro_f1": 0.0,
+        "mean_iou": 0.0,
+        "mean_coord_error_px": 0.0,
+        "total_tp": 0,
+        "total_fp": 9,
+        "total_fn": 9
+      },
+      "windows": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "micro_f1": 0.0,
+        "mean_iou": 0.0,
+        "mean_coord_error_px": 0.0,
+        "total_tp": 0,
+        "total_fp": 9,
+        "total_fn": 12
+      },
+      "rooms": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "micro_f1": 1.0,
+        "mean_iou": 0.7798,
+        "mean_coord_error_px": 0.0,
+        "total_tp": 12,
+        "total_fp": 0,
+        "total_fn": 0
+      }
+    }
+  },
+  "per_image_results": [
+    {
+      "image": "sample_0001.png",
+      "fine_tuned_metrics": {
+        "walls": {
+          "precision": 0.25,
+          "recall": 0.5,
+          "f1": 0.3333,
+          "mean_endpoint_error_px": 12.44,
+          "tp": 3,
+          "fp": 9,
+          "fn": 3,
+          "pred_count": 12,
+          "gt_count": 6
+        },
+        "doors": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "mean_iou": 0.0,
+          "mean_coord_error_px": 0.0,
+          "tp": 0,
+          "fp": 3,
+          "fn": 3,
+          "pred_count": 3,
+          "gt_count": 3
+        },
+        "windows": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "mean_iou": 0.0,
+          "mean_coord_error_px": 0.0,
+          "tp": 0,
+          "fp": 2,
+          "fn": 4,
+          "pred_count": 2,
+          "gt_count": 4
+        },
+        "rooms": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "mean_iou": 0.7656,
+          "semantic_accuracy": 0.0,
+          "tp": 4,
+          "fp": 0,
+          "fn": 0,
+          "pred_count": 4,
+          "gt_count": 4
+        }
+      },
+      "baseline_metrics": {
+        "walls": {
+          "precision": 0.25,
+          "recall": 0.5,
+          "f1": 0.3333,
+          "mean_endpoint_error_px": 12.44,
+          "tp": 3,
+          "fp": 9,
+          "fn": 3,
+          "pred_count": 12,
+          "gt_count": 6
+        },
+        "doors": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "mean_iou": 0.0,
+          "mean_coord_error_px": 0.0,
+          "tp": 0,
+          "fp": 3,
+          "fn": 3,
+          "pred_count": 3,
+          "gt_count": 3
+        },
+        "windows": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "mean_iou": 0.0,
+          "mean_coord_error_px": 0.0,
+          "tp": 0,
+          "fp": 3,
+          "fn": 4,
+          "pred_count": 3,
+          "gt_count": 4
+        },
+        "rooms": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "mean_iou": 0.7656,
+          "semantic_accuracy": 0.0,
+          "tp": 4,
+          "fp": 0,
+          "fn": 0,
+          "pred_count": 4,
+          "gt_count": 4
+        }
+      }
+    },
+    {
+      "image": "sample_0002.png",
+      "fine_tuned_metrics": {
+        "walls": {
+          "precision": 0.25,
+          "recall": 0.5,
+          "f1": 0.3333,
+          "mean_endpoint_error_px": 12.44,
+          "tp": 3,
+          "fp": 9,
+          "fn": 3,
+          "pred_count": 12,
+          "gt_count": 6
+        },
+        "doors": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "mean_iou": 0.0,
+          "mean_coord_error_px": 0.0,
+          "tp": 0,
+          "fp": 3,
+          "fn": 3,
+          "pred_count": 3,
+          "gt_count": 3
+        },
+        "windows": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "mean_iou": 0.0,
+          "mean_coord_error_px": 0.0,
+          "tp": 0,
+          "fp": 2,
+          "fn": 4,
+          "pred_count": 2,
+          "gt_count": 4
+        },
+        "rooms": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "mean_iou": 0.8511,
+          "semantic_accuracy": 0.0,
+          "tp": 4,
+          "fp": 0,
+          "fn": 0,
+          "pred_count": 4,
+          "gt_count": 4
+        }
+      },
+      "baseline_metrics": {
+        "walls": {
+          "precision": 0.25,
+          "recall": 0.5,
+          "f1": 0.3333,
+          "mean_endpoint_error_px": 12.44,
+          "tp": 3,
+          "fp": 9,
+          "fn": 3,
+          "pred_count": 12,
+          "gt_count": 6
+        },
+        "doors": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "mean_iou": 0.0,
+          "mean_coord_error_px": 0.0,
+          "tp": 0,
+          "fp": 3,
+          "fn": 3,
+          "pred_count": 3,
+          "gt_count": 3
+        },
+        "windows": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "mean_iou": 0.0,
+          "mean_coord_error_px": 0.0,
+          "tp": 0,
+          "fp": 3,
+          "fn": 4,
+          "pred_count": 3,
+          "gt_count": 4
+        },
+        "rooms": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "mean_iou": 0.8511,
+          "semantic_accuracy": 0.0,
+          "tp": 4,
+          "fp": 0,
+          "fn": 0,
+          "pred_count": 4,
+          "gt_count": 4
+        }
+      }
+    },
+    {
+      "image": "sample_0011.png",
+      "fine_tuned_metrics": {
+        "walls": {
+          "precision": 0.25,
+          "recall": 0.5,
+          "f1": 0.3333,
+          "mean_endpoint_error_px": 12.44,
+          "tp": 3,
+          "fp": 9,
+          "fn": 3,
+          "pred_count": 12,
+          "gt_count": 6
+        },
+        "doors": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "mean_iou": 0.0,
+          "mean_coord_error_px": 0.0,
+          "tp": 0,
+          "fp": 3,
+          "fn": 3,
+          "pred_count": 3,
+          "gt_count": 3
+        },
+        "windows": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "mean_iou": 0.0,
+          "mean_coord_error_px": 0.0,
+          "tp": 0,
+          "fp": 2,
+          "fn": 4,
+          "pred_count": 2,
+          "gt_count": 4
+        },
+        "rooms": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "mean_iou": 0.7228,
+          "semantic_accuracy": 0.0,
+          "tp": 4,
+          "fp": 0,
+          "fn": 0,
+          "pred_count": 4,
+          "gt_count": 4
+        }
+      },
+      "baseline_metrics": {
+        "walls": {
+          "precision": 0.25,
+          "recall": 0.5,
+          "f1": 0.3333,
+          "mean_endpoint_error_px": 12.44,
+          "tp": 3,
+          "fp": 9,
+          "fn": 3,
+          "pred_count": 12,
+          "gt_count": 6
+        },
+        "doors": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "mean_iou": 0.0,
+          "mean_coord_error_px": 0.0,
+          "tp": 0,
+          "fp": 3,
+          "fn": 3,
+          "pred_count": 3,
+          "gt_count": 3
+        },
+        "windows": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0,
+          "mean_iou": 0.0,
+          "mean_coord_error_px": 0.0,
+          "tp": 0,
+          "fp": 3,
+          "fn": 4,
+          "pred_count": 3,
+          "gt_count": 4
+        },
+        "rooms": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "mean_iou": 0.7228,
+          "semantic_accuracy": 0.0,
+          "tp": 4,
+          "fp": 0,
+          "fn": 0,
+          "pred_count": 4,
+          "gt_count": 4
+        }
+      }
+    }
+  ]
+}
