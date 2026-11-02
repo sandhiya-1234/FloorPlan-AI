@@ -93,13 +93,13 @@ def build_presentation():
     p0.font.color.rgb = COLOR_ACCENT_BLUE
 
     p1 = tf.add_paragraph()
-    p1.text = "Fine-tuning Qwen2.5-VL-3B-Instruct with LoRA to parse floor plans into structured JSON"
+    p1.text = "Goal: fine-tune Qwen2.5-VL-3B-Instruct with LoRA to parse floor plans into structured JSON"
     p1.font.size = Pt(18)
     p1.font.color.rgb = COLOR_TEXT_DARK
     p1.space_before = Pt(10)
 
     p2 = tf.add_paragraph()
-    p2.text = "Technical assessment | Status: pipeline under verification; see the results slide for what has actually been measured"
+    p2.text = "Technical assessment | Status: no model has been trained yet; the results slide states what has actually been measured"
     p2.font.size = Pt(13)
     p2.font.color.rgb = COLOR_TEXT_MUTED
     p2.space_before = Pt(24)
@@ -136,7 +136,7 @@ def build_presentation():
     s4 = create_blank_slide(prs)
     add_slide_header(s4, "Planned System Architecture: End-to-End Multimodal Pipeline (design, see README for implementation status)")
     add_bullet_points(s4, [
-        "1. Image Ingestion & Preprocessing:\n   • Contrast-limited adaptive histogram equalization (CLAHE) for drafting line enhancement\n   • Aspect-ratio-preserving letterbox onto a 1008x1008 canvas (coordinates mapped back to the original image)",
+        "1. Image Ingestion & Preprocessing:\n   • Aspect-ratio-preserving letterbox onto a 1008x1008 canvas (coordinates mapped back to the original image)",
         "2. Multimodal VLM Representation:\n   • Dynamic resolution Vision Transformer (ViT) patch extraction without spatial distortion\n   • Conversational instruction prompt guiding structured architectural decomposition",
         "3. Parameter-Efficient LoRA Adapter:\n   • Low-rank matrices (r=16, alpha=32) attached to query, key, value, and MLP projection layers\n   • Masked target loss computing cross-entropy strictly on assistant JSON tokens",
         "4. Geometric Postprocessing & JSON Sanitization:\n   • Non-Maximum Suppression (IoU >= 0.75) for duplicate entity elimination\n   • Orthogonal snapping aligning near-perpendicular walls to exact CAD axes\n   • Pydantic schema validation ensuring watertight geometric integrity."
@@ -171,7 +171,7 @@ def build_presentation():
     add_slide_header(s7, "Image Preprocessing & Coordinate Transformation")
     add_bullet_points(s7, [
         "1. Color & Resolution Normalization:\n   • Letterbox: one uniform scale (long side to 1008 px) plus white padding; no distortion.\n   • Scale and padding offsets are stored so predictions map back to original-image coordinates.",
-        "2. Contrast & Edge Enhancement:\n   • Contrast Limited Adaptive Histogram Equalization (CLAHE) applied to the luminance channel.\n   • Sharpens low-contrast blueprint drafting marks without introducing noise.",
+        "2. Contrast & Edge Enhancement:\n   • None applied in the current pipeline (CLAHE was considered but is not implemented or evaluated).",
         "3. Coordinate Mapping Integrity:\n   • All ground-truth annotations are scaled synchronously with the raster canvas.\n   • Aspect ratio is preserved (letterbox), so room angles are not warped."
     ])
 
@@ -179,7 +179,7 @@ def build_presentation():
     # Slide 8: Fine-Tuning Approach
     # ----------------------------------------------------
     s8 = create_blank_slide(prs)
-    add_slide_header(s8, "Fine-Tuning Approach: Instruction-Tuned Multimodal Adaptation")
+    add_slide_header(s8, "Fine-Tuning Approach (planned design; trainer written but never executed)")
     add_bullet_points(s8, [
         "1. Conversational Template:\n   • User: <image> + 'Analyze this 2D architectural floor plan image and detect all architectural elements...'\n   • Assistant: Compact serialized JSON matching FloorPlanSchema.",
         "2. Label Masking Strategy:\n   • All image tokens and user instruction prompt tokens are masked with label = -100.\n   • Model gradients are computed exclusively on target JSON architectural syntax and coordinates.",
@@ -194,7 +194,7 @@ def build_presentation():
     add_slide_header(s9, "LoRA / QLoRA Hyperparameter Configuration (planned; not yet executed)")
     add_bullet_points(s9, [
         "Fine-Tuning Hyperparameters:\n  • LoRA Rank (r): 16\n  • LoRA Alpha: 32 (Scaling ratio = 2.0)\n  • LoRA Dropout: 0.05\n  • Target Modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]\n  • Trainable parameters: measured and logged at training time (not assumed).",
-        "Optimization Parameters:\n  • Optimizer: AdamW (weight_decay = 0.01)\n  • Learning Rate: 2e-4 with Linear Warmup (warmup_ratio = 0.03)\n  • Epochs: 3 | Batch Size: 1 per device | Gradient Accumulation Steps: 8\n  • Precision: FP16 mixed precision on T4 (no BF16) with gradient checkpointing."
+        "Optimization Parameters:\n  • Optimizer: AdamW (weight_decay = 0.01)\n  • Learning Rate: 2e-4 (warmup_ratio 0.03 configured; scheduler not yet wired into the trainer)\n  • Epochs: 3 | Batch Size: 1 per device | Gradient Accumulation Steps: 8\n  • Precision: FP16 mixed precision on T4 (no BF16) with gradient checkpointing."
     ])
 
     # ----------------------------------------------------
@@ -258,9 +258,9 @@ def build_presentation():
     s13 = create_blank_slide(prs)
     add_slide_header(s13, "Technical Challenges, Edge Cases & Practical Limitations")
     add_bullet_points(s13, [
-        "1. Token Context Length in Dense Multi-Room Plans:\n   • Large complexes with 50+ rooms generate >4,000 output tokens, requiring token sequence budgeting.",
+        "1. Token Context Length in Dense Multi-Room Plans:\n   • Plans with many rooms may need long outputs; output length has not been measured yet.",
         "2. Curved and Non-Manhattan Wall Geometries:\n   • Current orthogonal postprocessing assumes predominantly 90-degree drafting angles; circular walls require spline approximation.",
-        "3. Blueprint Scan Artifacts & Text Occlusion:\n   • Text dimension callouts intersecting wall lines occasionally disrupt edge continuity.",
+        "3. Blueprint Scan Artifacts & Text Occlusion:\n   • Text callouts crossing wall lines may disrupt wall detection; not yet measured.",
         "4. CAD Precision vs. Neural Approximation:\n   • VLM coordinates are approximate; the achieved pixel error is reported on the results slide, and postprocessing is logged so it cannot hide model errors."
     ])
 
@@ -270,7 +270,7 @@ def build_presentation():
     s14 = create_blank_slide(prs)
     add_slide_header(s14, "Conclusion & Future Research Directions")
     add_bullet_points(s14, [
-        "Status:\n  \u2022 The pipeline code (schema, preprocessing, LoRA trainer, inference, evaluation) is implemented; what has actually been executed and measured is stated in the README status table and the results slide.\n  \u2022 Fine-tuning is claimed only if a verified LoRA adapter exists and the evaluation above was run with it.",
+        "Status:\n  \u2022 Implemented and unit-tested: schema, letterbox preprocessing, strict JSON parsing, geometric postprocessing, evaluation, OpenCV baseline. Written but never run: LoRA trainer. Not implemented: Qwen2.5-VL generation. See the README status table.\n  \u2022 Fine-tuning is claimed only if a verified LoRA adapter exists and the evaluation above was run with it.",
         "Next steps:\n  \u2022 Train on a larger real CubiCasa5K subset on Colab and evaluate on a larger unseen test split.\n  \u2022 Compare against zero-shot Qwen2.5-VL and the OpenCV baseline with identical metrics.\n  \u2022 Future work: 2D-to-3D IFC/BIM export, multi-storey alignment, tiled inference for very large plans."
     ])
 

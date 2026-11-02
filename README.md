@@ -19,14 +19,14 @@ classify **walls, doors, windows and rooms** in 2D floor-plan images and emit st
 | Strict JSON parsing and schema validation (`inference/postprocess.py`) | yes | unit tests | yes; invalid model text raises, it never becomes an empty plan |
 | Geometric postprocessing (wall snap, duplicate suppression, portal snap, polygon repair) | yes | unit tests | partly: polygon repair needs `shapely`, which was not installable in the sandbox, so 2 tests were not run there (run them on Colab) |
 | Letterbox preprocessing, 1008x1008 canvas, exact coordinate round-trip | yes | unit tests | yes |
-| OpenCV baseline (`baselines/opencv_baseline.py`), a comparison point only, **not AI** | yes | unit tests on tiny drawn images | no benchmark run |
-| Evaluation (Hungarian matching, failures counted as misses) | yes | unit and end-to-end tests on hand-made fixtures | no run on model output |
-| Streamlit dashboard (`app.py`) | yes | compiled only | **never launched** |
+| OpenCV baseline (`baselines/opencv_baseline.py`), a comparison point only, **not AI** | yes | unit tests and a drawn-plan smoke test; runs end to end | runs, but over-detects walls (many duplicate segments per real wall). **No benchmark on real plans** |
+| Evaluation (Hungarian matching, failures counted as misses) | yes | unit and end-to-end tests on hand-made fixtures; baseline -> records -> evaluator smoke test | yes for the logic; **no run on any model's output or on real data** |
+| Streamlit dashboard (`app.py`) | yes | its three pages were run only against a stand-in for Streamlit (no import/name errors) | **never launched in real Streamlit** |
 | Qwen2.5-VL LoRA training script (`training/`) | written | **never executed** | no. A verified rewrite is planned (Phase 3) |
 | Qwen2.5-VL generation (`inference/predict.py`) | **not implemented** | no | the function verifies the adapter and then raises `NotImplementedError` |
 | Real dataset (CubiCasa5K subset) | **not downloaded** | no | the annotation parser has not been checked against real files |
 | Trained adapter weights | **do not exist** | | |
-| Evaluation results of any system | **none** | | |
+| Evaluation results of any system on real floor plans | **none** | | |
 
 ## What the finished system will do
 
@@ -98,6 +98,17 @@ python evaluation/evaluate.py --gt-dir <gt_dir> --pred-dir <pred_dir> --system-n
 ```
 
 Today the adapter command fails with `AdapterError` because no adapter exists. That is the correct behaviour.
+`inference/predict.py` and `inference/predict_batch.py` fail the same way: the batch script records a failure for every image and
+writes `batch_summary.json`. They never fall back to the OpenCV baseline or to ground truth.
+
+### Test status
+
+```bash
+python -m pytest tests -q -rs
+```
+Result in the development sandbox: **48 passed, 3 skipped**. The 3 skipped tests need `shapely` (room polygon IoU, polygon repair,
+room-type confusion), which could not be installed there. Skipped is not passed: they have **not been run**. They are expected to run
+on Colab with `requirements-train.txt` installed (`COLAB.md`, Cell 3).
 
 ## Evaluation protocol (implemented, not yet applied to any real data)
 
