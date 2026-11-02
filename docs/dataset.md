@@ -1,52 +1,38 @@
-# Dataset Documentation: CubiCasa5K Architectural Corpus
+# Dataset notes
 
-## 1. Dataset Overview
+**Status: no real dataset is in the repository yet.** The 15-image set that used to live in `dataset/` was
+procedurally generated (one shared 4-room template, annotations not aligned with the images) and is archived
+in `docs/audit/invalid_artifacts/synthetic_fixture_dataset/`. It is not CubiCasa5K and was never a valid
+train/validation/test corpus.
 
-- **Name**: CubiCasa5K
-- **Authors**: CubiCasa Inc. / Kalervo et al.
-- **Reference**: *CubiCasa5K: A Dataset for Architectural Plan Analysis and 3D Reconstruction*
-- **License**: Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0).
-- **Scale**: 5,000 multi-room residential and commercial architectural floor-plan images.
+## Target dataset: CubiCasa5K
 
-## 2. Raw Structure
+- Source: CubiCasa5K, floor plans with vector annotations (Kalervo et al., 2019).
+- Licence: CC BY-NC-SA 4.0 (non-commercial, share-alike). Check the licence terms on the download page before use;
+  any adapter trained on it inherits the same restrictions.
+- Plan: start with a small subset downloaded from the official archive, use the dataset's official train/val/test
+  lists, and grow only after the pipeline is proven.
 
-Each raw floor plan in CubiCasa5K is structured as an individual directory:
-```
-dataset/raw/<sample_id>/
-├── F1_scaled.png       # Rasterized 2D floor-plan image
-├── F1_original.png     # Full-resolution raw scan
-└── model.svg           # High-precision vector graphics annotation
-```
+## What is not yet known
 
-### SVG Primitives
-- `<g id="Wall">`: Contains `<line>`, `<polyline>`, and `<path>` elements defining wall centerlines and thickness.
-- `<g id="Door">`: Contains single-leaf and double-leaf door symbols with swing directions.
-- `<g id="Window">`: Contains fenestration rects and line dividers along perimeter walls.
-- `<g id="Space">`: Contains `<g class="RoomType">` with `<polygon points="...">` delineating closed room perimeters.
+The real SVG structure has not been inspected. In particular, how walls, doors, windows and room classes are
+encoded (element types, group names, class attributes, transforms) is **unverified**. An earlier version of this
+page described a structure that had been inferred from the synthetic fixtures; that description has been removed.
+`preprocessing/convert_annotations.py` is therefore marked unverified and must not be used for training data.
 
-## 3. Standardization & Mapping
+## Phase 2 acceptance criteria
 
-Our preprocessing pipeline (`preprocessing/convert_annotations.py`) maps the heterogeneous SVG elements into standardized schema categories:
+1. A small tool prints the real structure of several SVGs (element and attribute inventory).
+2. The converter is written against that structure and outputs the project schema in original-image pixels.
+3. Overlays of converted walls, doors, windows and rooms drawn on the real images are inspected and match.
+   **No training until this is true.**
+4. Images are letterboxed to a 1008x1008 canvas with an exact, tested coordinate mapping (`preprocessing/letterbox.py`).
+5. A split report shows no exact-duplicate, near-duplicate (perceptual hash) or near-identical annotations across
+   train, validation and test. The split follows the official lists.
+6. A `DATASET_MANIFEST.json` (counts, file hashes, split lists, licence) is written; the dashboard reads it.
 
-| Source SVG Class | Target Standard Class | Subtype Preserved | Geometry Representation |
-| :--- | :--- | :--- | :--- |
-| `<g id="Wall">` | `wall` | None | Line segment `[start_x, start_y]` to `[end_x, end_y]` |
-| `Door-single`, `Door-double` | `door` | Orientation | Bounding box `[xmin, ymin, xmax, ymax]` + midpoint `[x, y]` |
-| `Window`, `Window-bay` | `window` | Orientation | Bounding box `[xmin, ymin, xmax, ymax]` + midpoint `[x, y]` |
-| `Bedroom`, `MasterBedroom` | `room` | `bedroom` | Multi-point polygon `[[x1, y1], [x2, y2], ...]` |
-| `Bathroom`, `WC`, `Shower` | `room` | `bathroom` | Multi-point polygon |
-| `Kitchen`, `Kitchenette` | `room` | `kitchen` | Multi-point polygon |
-| `LivingRoom`, `Living` | `room` | `living_room` | Multi-point polygon |
-| `DiningRoom`, `Dining` | `room` | `dining_room` | Multi-point polygon |
-| `Hall`, `Corridor`, `Entry` | `room` | `corridor` | Multi-point polygon |
-| `Balcony`, `Terrace` | `room` | `balcony` | Multi-point polygon |
-| `Storage`, `Closet` | `room` | `storage` | Multi-point polygon |
+## Target classes
 
-## 4. Train / Validation / Test Splitting
-
-To eliminate data leakage, data partitioning is performed strictly at the **image level** (an entire floor plan image and all its sub-elements belong exclusively to one split).
-
-- **Train Split**: 70% (10 floor plans in base experiment set)
-- **Validation Split**: 15% (2 floor plans)
-- **Test Split**: 15% (3 held-out unseen floor plans)
-- **Deterministic Seed**: `seed = 42`
+walls (line segments), doors and windows (bounding boxes with orientation), rooms (polygons with a type such as
+bedroom, bathroom, kitchen, living_room). The exact room-type mapping from CubiCasa5K classes will be fixed in Phase 2
+once the real class names have been read from the data.

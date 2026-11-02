@@ -1,8 +1,11 @@
 """
 Dataset Downloader for FloorPlan-AI: CubiCasa5K Architectural Dataset.
 
-Handles downloading raw floor-plan images and vector SVG annotations from public repositories
-(Hugging Face / CubiCasa GitHub), or bootstrapping authentic samples for reproducible offline execution.
+DEPRECATED / NOT A REAL DATA SOURCE.
+This script only generates procedural SYNTHETIC fixtures (one shared 4-room template). They are not
+CubiCasa5K, must not be used for training or evaluation, and the previous results built on them are
+archived in docs/audit/invalid_artifacts/. Phase 2 replaces this with a verified CubiCasa5K subset
+downloader (CC BY-NC-SA 4.0).
 """
 
 import os

@@ -82,11 +82,11 @@ def match_elements_hungarian(
     n_gt = len(gt_items)
 
     if n_pred == 0 and n_gt == 0:
-        return 0, 0, 0, [], {"mean_coord_error": 0.0, "semantic_matches": 0, "semantic_accuracy": 0.0}
+        return 0, 0, 0, [], {"mean_coord_error": 0.0, "semantic_matches": 0, "semantic_accuracy": 0.0, "matched_pairs": []}
     if n_pred == 0:
-        return 0, 0, n_gt, [], {"mean_coord_error": 0.0, "semantic_matches": 0, "semantic_accuracy": 0.0}
+        return 0, 0, n_gt, [], {"mean_coord_error": 0.0, "semantic_matches": 0, "semantic_accuracy": 0.0, "matched_pairs": []}
     if n_gt == 0:
-        return 0, n_pred, 0, [], {"mean_coord_error": 0.0, "semantic_matches": 0, "semantic_accuracy": 0.0}
+        return 0, n_pred, 0, [], {"mean_coord_error": 0.0, "semantic_matches": 0, "semantic_accuracy": 0.0, "matched_pairs": []}
 
     # Construct cost matrix
     cost_matrix = np.full((n_pred, n_gt), fill_value=1e6, dtype=np.float64)

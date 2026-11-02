@@ -2,6 +2,7 @@
 Unit tests for Evaluation Metrics and Bipartite Matching.
 """
 
+import pytest
 from schemas.floorplan_schema import FloorPlanSchema, RoomElement, WallElement, DoorElement, WindowElement
 from evaluation.metrics import (
     compute_bbox_iou, compute_polygon_iou, compute_wall_matching_error,
@@ -11,6 +12,7 @@ from evaluation.metrics import (
 
 def test_polygon_iou():
     """Tests exact polygon IoU calculation."""
+    pytest.importorskip("shapely", reason="needs shapely (requirements.txt); run on Colab / a full environment")
     poly1 = [[0, 0], [10, 0], [10, 10], [0, 10]]
     poly2 = [[0, 0], [10, 0], [10, 10], [0, 10]]
     assert compute_polygon_iou(poly1, poly2) == 1.0

@@ -2,6 +2,7 @@
 Unit tests for Geometric Postprocessing and algorithms.
 """
 
+import pytest
 from inference.postprocess import (
     calculate_bbox_iou,
     remove_duplicate_boxes,
@@ -56,6 +57,7 @@ def test_snap_wall_orthogonality():
 
 def test_polygon_validation_shapely():
     """Tests topological validation of valid and self-intersecting polygons."""
+    pytest.importorskip("shapely", reason="needs shapely (requirements.txt); run on Colab / a full environment")
     # Valid square
     valid_sq = [[100, 100], [300, 100], [300, 300], [100, 300]]
     res, repaired = validate_and_refine_polygon(valid_sq)

@@ -128,7 +128,10 @@ def evaluate_system(gt_dir: Path, pred_dir: Path, system_name: str) -> Dict[str,
         "failures_by_stage": dict(stage_counts),
         "json_validity_rate": round(n_json_ok / n_text, 4) if n_text else None,
         "json_validity_note": None if n_text else "not applicable: system emits no text output",
-        "macro_f1_over_classes": round(float(np.mean([class_metrics[c]["f1"] for c in CLASSES])), 4),
+        "macro_f1_over_classes": (
+            round(float(np.mean([class_metrics[c]["f1"] for c in CLASSES if class_metrics[c]["n_gt"] > 0])), 4)
+            if any(class_metrics[c]["n_gt"] > 0 for c in CLASSES) else None),
+        "macro_f1_note": "mean over classes that have at least one ground-truth element",
         "class_metrics": class_metrics,
         "room_type_confusion": {g: dict(row) for g, row in confusion.items()},
         "matching": "Hungarian; walls endpoint error <= 25 px; doors/windows bbox IoU >= 0.5; rooms polygon IoU >= 0.5",

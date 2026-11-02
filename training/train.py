@@ -1,6 +1,9 @@
 """
 Fine-Tuning Engine for FloorPlan-AI: Vision-Language Model Adaptation.
 
+STATUS: GPU-only. Has never been executed on a GPU; a verified rewrite (scheduler, mixed precision,
+resumable checkpoints, run manifest) is Phase 3. Do not cite any result from this file until then.
+
 Orchestrates LoRA/QLoRA parameter-efficient fine-tuning on architectural floor plans.
 Calculates ground-truth cross-entropy loss, evaluates validation loss, checkpoints models,
 and saves the trained PEFT adapter for downstream inference.
@@ -17,7 +20,6 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 import matplotlib.pyplot as plt
 import torch
-import torch.nn as nn
 from torch.utils.data import DataLoader
 from torch.optim import AdamW
 
@@ -32,70 +34,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger(__name__)
 
 
-class FloorPlanSurrogateModel(nn.Module):
-    """
-    Lightweight Vision-Language architecture used for local CPU training and testing
-    when full 3B VLM weights cannot fit into local host memory without GPU accelerator.
-    Matches Qwen2.5-VL conversational embeddings and token loss mechanics.
-    """
-    def __init__(self, vocab_size: int = 32000, hidden_dim: int = 256):
-        super().__init__()
-        self.vocab_size = vocab_size
-        self.hidden_dim = hidden_dim
-        self.token_embed = nn.Embedding(vocab_size, hidden_dim)
-        self.vision_proj = nn.Sequential(
-            nn.AdaptiveAvgPool2d((8, 8)),
-            nn.Flatten(),
-            nn.Linear(3 * 64, hidden_dim),
-            nn.LayerNorm(hidden_dim)
-        )
-        self.transformer = nn.TransformerEncoder(
-            nn.TransformerEncoderLayer(
-                d_model=hidden_dim, nhead=4, dim_feedforward=512, batch_first=True
-            ),
-            num_layers=2
-        )
-        self.lm_head = nn.Linear(hidden_dim, vocab_size, bias=False)
-
-    def forward(self, input_ids, attention_mask=None, labels=None, **kwargs):
-        # Embed text tokens
-        x = self.token_embed(input_ids)
-        # Pass transformer
-        h = self.transformer(x)
-        logits = self.lm_head(h)
-
-        loss = None
-        if labels is not None:
-            # Shift tokens for autoregressive next-token prediction
-            shift_logits = logits[..., :-1, :].contiguous()
-            shift_labels = labels[..., 1:].contiguous()
-            loss_fn = nn.CrossEntropyLoss(ignore_index=-100)
-            loss = loss_fn(shift_logits.view(-1, self.vocab_size), shift_labels.view(-1))
-
-        return {"loss": loss, "logits": logits}
-
-    def save_pretrained(self, save_directory: str):
-        save_dir = Path(save_directory)
-        save_dir.mkdir(parents=True, exist_ok=True)
-        torch.save(self.state_dict(), save_dir / "adapter_model.bin")
-        config = {
-            "model_type": "floorplan_surrogate_cpu_adapter",
-            "description": (
-                "CPU-VALIDATION ONLY — surrogate 2-layer transformer. "
-                "NOT a Qwen2.5-VL LoRA adapter. Do not load with PEFT on production model. "
-                "Real LoRA adapter must be produced via COLAB.md GPU training path."
-            ),
-            "vocab_size": self.vocab_size,
-            "hidden_dim": self.hidden_dim,
-            "peft_type": "NOT_LORA_SURROGATE",
-            "r": 16,
-            "lora_alpha": 32
-        }
-        with open(save_dir / "adapter_config.json", "w", encoding="utf-8") as f:
-            json.dump(config, f, indent=2)
-
-
-def run_training(config: FloorPlanTrainingConfig, quick_cpu_mode: bool = False):
+def run_training(config: FloorPlanTrainingConfig):
     """
     Executes actual training process with ground-truth loss calculation,
     validation loss tracking, checkpointing, and adapter saving.
@@ -106,13 +45,10 @@ def run_training(config: FloorPlanTrainingConfig, quick_cpu_mode: bool = False):
 
     # 1. Audit hardware
     hw = check_cuda_environment()
-    if not hw["has_cuda"] or quick_cpu_mode:
-        # Integrity guard: the CPU branch below trains a toy 2-layer model and used to write
-        # its weights where a real adapter belongs. It is unreachable now and is deleted when
-        # train.py is rewritten (Phase 3). Real training runs on a Colab GPU only.
+    if not hw["has_cuda"]:
         raise RuntimeError(
             "Qwen2.5-VL LoRA training requires a CUDA GPU (use the Google Colab T4, see COLAB.md). "
-            "No CPU fallback exists: a toy model must never be saved as the project's adapter."
+            "There is deliberately no CPU fallback: a toy model must never be saved as the project's adapter."
         )
     device = torch.device("cuda")
     logger.info(f"Target Execution Device: {device}")
@@ -125,73 +61,10 @@ def run_training(config: FloorPlanTrainingConfig, quick_cpu_mode: bool = False):
     adapters_dir.mkdir(parents=True, exist_ok=True)
     logs_dir.mkdir(parents=True, exist_ok=True)
 
-    # 2. Check if running full Qwen2.5-VL or local surrogate
-    use_full_vlm = hw["has_cuda"] and not quick_cpu_mode
-
-    if use_full_vlm:
-        # ---------------------------------------------------------------
-        # REAL TRAINING MODE: Qwen2.5-VL-3B-Instruct + LoRA on GPU
-        # ---------------------------------------------------------------
-        logger.info("=" * 60)
-        logger.info("TRAINING MODE: FULL VLM (Qwen2.5-VL-3B-Instruct + LoRA)")
-        logger.info(f"  Model : {config.model.base_model_name}")
-        logger.info("  This mode requires a CUDA GPU (T4 or better).")
-        logger.info("  For Google Colab instructions see: COLAB.md")
-        logger.info("=" * 60)
-        model, processor = load_model_and_processor(
-            config.model, config.lora, is_training=True
-        )
-        collator = FloorPlanDataCollator(processor)
-    else:
-        # ---------------------------------------------------------------
-        # CPU VALIDATION MODE: FloorPlanSurrogateModel (toy 2-layer CPU transformer)
-        # ---------------------------------------------------------------
-        # This mode does NOT fine-tune Qwen2.5-VL-3B-Instruct.
-        # It trains a lightweight surrogate to validate the training loop,
-        # data pipeline, loss computation, checkpoint saving, and CSV export
-        # on machines without a CUDA GPU.
-        #
-        # The saved adapter (artifacts/adapters/final_lora_adapter/) in this
-        # mode contains surrogate weights and is NOT a valid PEFT LoRA adapter
-        # for Qwen2.5-VL.  It must not be loaded by inference/predict.py for
-        # genuine VLM-based predictions.
-        #
-        # To obtain a real Qwen2.5-VL LoRA adapter, run the GPU path on
-        # Google Colab (see COLAB.md).
-        # ---------------------------------------------------------------
-        logger.warning("=" * 60)
-        logger.warning("CPU VALIDATION MODE: FloorPlanSurrogateModel ONLY")
-        logger.warning("  No CUDA GPU detected (or --quick-cpu flag set).")
-        logger.warning("  A 2-layer lightweight surrogate transformer is used.")
-        logger.warning("  This is NOT fine-tuning Qwen2.5-VL-3B-Instruct.")
-        logger.warning("  Saved adapter will contain surrogate weights only.")
-        logger.warning("  For real Qwen2.5-VL fine-tuning, use: COLAB.md")
-        logger.warning("=" * 60)
-        processor = None
-        vocab_size = 2000
-        model = FloorPlanSurrogateModel(vocab_size=vocab_size, hidden_dim=128).to(device)
-
-        class SimpleCollator:
-            def __call__(self, batch):
-                # Tokenize ground truth text strings to character/hash tokens
-                max_t = 128
-                input_ids_list = []
-                labels_list = []
-                for item in batch:
-                    text = item["target_text"]
-                    tokens = [ord(c) % (vocab_size - 1) + 1 for c in text[:max_t]]
-                    if len(tokens) < max_t:
-                        tokens = tokens + [0] * (max_t - len(tokens))
-                    t_tensor = torch.tensor(tokens, dtype=torch.long)
-                    input_ids_list.append(t_tensor)
-                    labels_list.append(t_tensor.clone())
-
-                return {
-                    "input_ids": torch.stack(input_ids_list),
-                    "labels": torch.stack(labels_list),
-                }
-
-        collator = SimpleCollator()
+    # 2. Qwen2.5-VL-3B-Instruct + LoRA (CUDA GPU only)
+    logger.info(f"Base model: {config.model.base_model_name}")
+    model, processor = load_model_and_processor(config.model, config.lora, is_training=True)
+    collator = FloorPlanDataCollator(processor)
 
     # 3. Load datasets
     train_dataset = FloorPlanVLMDataset(config.train_dir, processor=processor)
@@ -289,7 +162,13 @@ def run_training(config: FloorPlanTrainingConfig, quick_cpu_mode: bool = False):
                     val_loss_total += float(v_loss.item())
                     val_steps += 1
 
-        avg_val_loss = val_loss_total / max(1, val_steps) if val_steps > 0 else avg_train_loss * 0.95
+        if val_steps == 0:
+            # Never invent a validation loss: best-adapter selection depends on it.
+            raise RuntimeError(
+                f"Validation produced no valid loss in epoch {epoch} (empty validation set or all-NaN loss). "
+                "Fix the data/config instead of continuing with a made-up number."
+            )
+        avg_val_loss = val_loss_total / val_steps
 
         history["epochs"].append(epoch)
         history["train_loss"].append(round(avg_train_loss, 4))
@@ -359,7 +238,6 @@ def main():
     parser.add_argument("--config", type=str, default="config.yaml", help="Path to config.yaml")
     parser.add_argument("--epochs", type=int, default=None, help="Override epochs")
     parser.add_argument("--lr", type=float, default=None, help="Override learning rate")
-    parser.add_argument("--quick-cpu", action="store_true", help="Run quick CPU training execution")
     args = parser.parse_args()
 
     cfg = FloorPlanTrainingConfig.from_yaml(args.config)
@@ -368,7 +246,7 @@ def main():
     if args.lr:
         cfg.training.learning_rate = args.lr
 
-    run_training(cfg, quick_cpu_mode=args.quick_cpu or (not torch.cuda.is_available()))
+    run_training(cfg)
 
 
 if __name__ == "__main__":

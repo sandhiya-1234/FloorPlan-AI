@@ -1,6 +1,10 @@
 """
 Annotation Converter & Image Preprocessor for FloorPlan-AI.
 
+STATUS: written for the synthetic SVG fixtures, NOT verified against real CubiCasa5K files. Do not use
+it to build a training set until Phase 2 has inspected the real SVG structure and proven with image
+overlays that converted annotations line up with the images.
+
 Converts CubiCasa5K raw SVG vector annotations into standardized JSON according
 to FloorPlanSchema. Handles resolution normalization, aspect-ratio preservation,
 coordinate scaling, contrast enhancement, and Pydantic validation.

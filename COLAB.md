@@ -1,86 +1,62 @@
-# Google Colab GPU Training Guide: FloorPlan-AI
+# Google Colab GPU guide (T4)
 
-This guide provides step-by-step instructions for fine-tuning **Qwen2.5-VL-3B-Instruct** using **QLoRA (4-bit)** on a free Google Colab **NVIDIA Tesla T4 GPU**.
+Colab is where all model training and model inference run, because the development laptop has no NVIDIA GPU.
+Do **not** download the 3B base model to the laptop.
 
----
+**Status:** only the cells in section 2 exist today and none of them trains or runs a model. Training,
+inference and evaluation cells will be added here when those phases are implemented *and* verified.
+Nothing below has been run on Colab yet, so no outputs are shown.
 
-## 1. Colab Runtime Setup
+## 1. Runtime
 
-1. Open [Google Colab](https://colab.research.google.com).
-2. Go to **Runtime** > **Change runtime type**.
-3. Under **Hardware accelerator**, select **T4 GPU**.
-4. Click **Save**.
+Runtime > Change runtime type > **T4 GPU** > Save.
 
----
+## 2. Cells that are valid now
 
-## 2. Execute Training in Colab
+### Cell 1: clone the branch and install
 
-Copy and run the following code blocks in your Colab notebook:
-
-### Cell 1: Clone Repository & Install GPU Dependencies
 ```python
-# Clone the project repository
-!git clone https://github.com/your-username/floorplan-ai.git
-%cd floorplan-ai
+!git clone https://github.com/sandhiya-1234/FloorPlan-AI.git
+%cd FloorPlan-AI
+!git checkout repair/real-vlm-pipeline
+!git log --oneline -1
 
-# Install GPU accelerated dependencies
-!pip install -q torch torchvision --index-url https://download.pytorch.org/whl/cu121
-!pip install -q transformers>=4.48.0 peft>=0.12.0 accelerate>=0.33.0 bitsandbytes>=0.43.0
-!pip install -q pydantic opencv-python pillow shapely pyyaml matplotlib pandas python-pptx pytest
+# Quote version specifiers: an unquoted ">=" is a shell redirect and silently writes a file named "=4.49.0".
+!pip install -q -r requirements-train.txt
+!pip install -q "pytest>=7.4.0"
 ```
 
-### Cell 2: Verify GPU Environment
+Colab already ships a CUDA build of torch. If `pip` offers to replace it, keep Colab's version unless a later phase says otherwise.
+
+### Cell 2: check the GPU
+
 ```python
 import torch
-print("CUDA Available:", torch.cuda.is_available())
+print("CUDA available:", torch.cuda.is_available())
 if torch.cuda.is_available():
-    print("Device Name:", torch.cuda.get_device_name(0))
-    print("VRAM (GB):", round(torch.cuda.get_device_properties(0).total_memory / (1024**3), 2))
+    p = torch.cuda.get_device_properties(0)
+    print("Device:", p.name, "| VRAM GB:", round(p.total_memory / 1024**3, 1))
+    print("bf16 supported:", torch.cuda.is_bf16_supported())  # a T4 reports False: train in fp16
 ```
 
-### Cell 3: Prepare Dataset
+### Cell 3: run the test suite (including the Shapely tests)
+
+Three tests are skipped in the sandbox where the code was written, because `shapely` could not be installed there.
+With `requirements-train.txt` installed they should run here.
+
 ```python
-# Download and preprocess 50 CubiCasa5K floor plans
-!python preprocessing/download_dataset.py --samples 50
-!python preprocessing/convert_annotations.py
-!python preprocessing/split_dataset.py --train-ratio 0.8 --val-ratio 0.1 --test-ratio 0.1
+!python -m pytest tests -q -rs
 ```
 
-### Cell 4: Launch QLoRA Fine-Tuning
-```python
-# Run fine-tuning with 4-bit quantization and LoRA
-!python training/train.py --config config.yaml --epochs 3 --lr 0.0002
-```
+Read the summary line. If any test is still reported as skipped, `-rs` prints the reason. Skipped is not passed.
 
-### Cell 5: Run Evaluation on Unseen Test Split
-```python
-!python evaluation/evaluate.py
-```
+## 3. Cells to be added later (not available yet)
 
-### Cell 6: Package & Download Trained LoRA Adapter
-```python
-from google.colab import files
-import shutil
+| Phase | What the cells will do |
+| :--- | :--- |
+| 2 | download a small CubiCasa5K subset, convert annotations, write overlay images, run leakage checks |
+| 3 | 8-image overfit sanity run, then LoRA/QLoRA training with a saved run manifest |
+| 4 | verify the adapter against the base model, then generate JSON from images and save raw outputs |
+| 5 | run zero-shot Qwen, fine-tuned Qwen + LoRA and the OpenCV baseline on the test split, then evaluate |
 
-# Zip the trained LoRA adapter weights
-shutil.make_archive("final_lora_adapter", "zip", "artifacts/adapters/final_lora_adapter")
-
-# Download to your local machine for local inference
-files.download("final_lora_adapter.zip")
-```
-
----
-
-## 3. Using the Trained Adapter Locally
-
-Once downloaded, extract `final_lora_adapter.zip` into your local `artifacts/adapters/final_lora_adapter/` directory.
-
-Run local inference:
-```bash
-python inference/predict.py --image samples/sample1.png
-```
-
-Launch the Streamlit app:
-```bash
-streamlit run app.py
-```
+Until Phase 3 has run, `artifacts/adapters/final_lora_adapter/` is empty and `inference/predict.py` raises on purpose.

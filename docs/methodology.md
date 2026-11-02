@@ -4,9 +4,12 @@
 
 Architectural 2D floor plans are dense graphical blueprints encoding structural partitions (walls), circulation portals (doors), fenestrations (windows), and functional spaces (rooms). Automated extraction of these entities is critical for automated Building Information Modeling (BIM), 2D-to-3D CAD reconstruction, structural simulation, and indoor navigation.
 
+> **Status:** this page describes the intended design. Only the preprocessing (letterbox), strict parsing and the
+> geometric refinement below are implemented and unit-tested; the model stage is not trained or run yet (see README).
+
 The system is formulated as a hybrid vision-language detection and geometric refinement pipeline:
 
-$$\mathcal{I} \in \mathbb{R}^{H \times W \times 3} \xrightarrow{\text{CLAHE + Resizing}} \tilde{\mathcal{I}} \xrightarrow{\text{VLM + LoRA}} \mathcal{S}_{\text{tokens}} \xrightarrow{\text{JSON Parse}} \mathcal{G}_{\text{raw}} \xrightarrow{\text{Geometric Snapping}} \mathcal{G}_{\text{refined}}$$
+$$\mathcal{I} \in \mathbb{R}^{H \times W \times 3} \xrightarrow{\text{letterbox 1008}} \tilde{\mathcal{I}} \xrightarrow{\text{VLM + LoRA}} \mathcal{S}_{\text{tokens}} \xrightarrow{\text{JSON Parse}} \mathcal{G}_{\text{raw}} \xrightarrow{\text{Geometric Snapping}} \mathcal{G}_{\text{refined}}$$
 
 ## 2. Vision-Language Model Architecture: Qwen2.5-VL-3B-Instruct
 
@@ -38,15 +41,17 @@ Raw vision model outputs approximate spatial positions. To generate CAD-viable g
 
 1. **Orthogonal Wall Snapping**:
    Blueprints predominantly follow orthogonal axes. For each detected wall segment with angle $\theta = \arctan2(|\Delta y|, |\Delta x|)$:
-   - If $\theta \le \tau_{\text{angle}}$ (default $6.0^\circ$), the segment is snapped to a horizontal line with $y = \frac{y_1 + y_2}{2}$.
+   - If $\theta \le \tau_{\text{angle}}$ (default $4.0^\circ$ in `postprocess_floorplan_json`), the segment is snapped to a horizontal line with $y = \frac{y_1 + y_2}{2}$.
    - If $|90^\circ - \theta| \le \tau_{\text{angle}}$, the segment is snapped to a vertical line with $x = \frac{x_1 + x_2}{2}$.
 
 2. **Non-Maximum Suppression (Duplicate Filtering)**:
-   For overlapping bounding boxes (doors and windows), boxes with $\text{IoU} \ge 0.75$ are suppressed, retaining the entity with highest confidence.
+   For overlapping bounding boxes (doors and windows), a box with $\text{IoU} > 0.75$ against an already kept box is dropped.
+   The first box in the model's output order is kept; no confidence is used because the model emits none.
 
 3. **Topology Repair & Area Computation**:
    Room polygons are evaluated with Shapely. Self-intersecting rings are resolved via zero-buffer dilation (`poly.buffer(0)`). Verified polygon area is computed via the Shoelace formula:
    $$A = \frac{1}{2} \left| \sum_{i=0}^{n-1} (x_i y_{i+1} - x_{i+1} y_i) \right|$$
 
 4. **Portal-to-Wall Snap**:
-   Door and window midpoints are projected onto the nearest structural wall line segment within threshold distance $\tau_{\text{dist}} = 30\text{ px}$.
+   Door and window midpoints are projected onto the nearest wall segment whose orientation matches the portal, within $\tau_{\text{dist}} = 15\text{ px}$.
+   Raw and refined outputs are both stored in the prediction record, so refinement never hides model errors.
