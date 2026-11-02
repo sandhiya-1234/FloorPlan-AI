@@ -14,11 +14,19 @@ import json
 import logging
 from typing import Dict, Any, List, Tuple, Optional
 import numpy as np
-from shapely.geometry import Polygon, MultiPolygon, LineString, box
 
 from schemas.floorplan_schema import FloorPlanSchema
 
 logger = logging.getLogger(__name__)
+
+
+class ModelOutputError(ValueError):
+    """The model output could not be parsed into a floor-plan dict. Never replaced by defaults."""
+
+
+def _opt_float(value: Any) -> Optional[float]:
+    """float(value), or None when the model did not provide it (no default is invented)."""
+    return None if value is None else float(value)
 
 
 def extract_json_from_text(raw_text: str) -> str:
@@ -35,16 +43,6 @@ def extract_json_from_text(raw_text: str) -> str:
         return brace_match.group(1).strip()
 
     return text
-
-
-def repair_json_string(text: str) -> str:
-    """Attempts regex-based repair of common LLM JSON syntax errors."""
-    cleaned = text
-    # Remove trailing commas before closing braces/brackets
-    cleaned = re.sub(r",\s*([\]}])", r"\1", cleaned)
-    # Fix single quotes to double quotes for keys/strings
-    cleaned = re.sub(r"'([^']*)'", r'"\1"', cleaned)
-    return cleaned
 
 
 def calculate_bbox_iou(box1: List[float], box2: List[float]) -> float:
@@ -116,6 +114,7 @@ def validate_and_refine_polygon(pts: List[List[float]], min_area: float = 100.0)
     """
     if len(pts) < 3:
         return None, False
+    from shapely.geometry import Polygon, MultiPolygon  # lazy: only polygon repair needs shapely
     try:
         poly = Polygon(pts)
         repaired = False
@@ -205,22 +204,19 @@ def postprocess_floorplan_json(
         "events": []
     }
 
-    # 1. Parse JSON
+    # 1. Parse JSON strictly: invalid model output is an error, not an empty floor plan
     if isinstance(raw_dict_or_str, str):
         extracted = extract_json_from_text(raw_dict_or_str)
         try:
             data = json.loads(extracted)
-        except json.JSONDecodeError:
-            repaired = repair_json_string(extracted)
-            try:
-                data = json.loads(repaired)
-            except json.JSONDecodeError as e:
-                logger.warning(f"Could not parse JSON: {e}. Falling back to default empty schema.")
-                data = {}
+        except json.JSONDecodeError as e:
+            raise ModelOutputError(f"Model output is not valid JSON: {e}") from e
     elif isinstance(raw_dict_or_str, dict):
         data = raw_dict_or_str
     else:
-        data = {}
+        raise ModelOutputError(f"Unsupported model output type: {type(raw_dict_or_str).__name__}")
+    if not isinstance(data, dict):
+        raise ModelOutputError(f"Model output JSON must be an object, got {type(data).__name__}")
 
     # Ensure required top-level fields
     w = int(data.get("image_width", image_width) or image_width)
@@ -256,8 +252,8 @@ def postprocess_floorplan_json(
                 "id": str(w_elem.get("id", f"wall_{idx}")),
                 "start": [round(float(s_snapped[0]), 2), round(float(s_snapped[1]), 2)],
                 "end": [round(float(e_snapped[0]), 2), round(float(e_snapped[1]), 2)],
-                "thickness": float(w_elem.get("thickness", 10.0)),
-                "confidence": float(w_elem.get("confidence", 0.95))
+                "thickness": _opt_float(w_elem.get("thickness")),
+                "confidence": _opt_float(w_elem.get("confidence"))
             })
         else:
             diagnostics["walls_dropped_zero_length"] += 1
@@ -290,7 +286,7 @@ def postprocess_floorplan_json(
             "bbox": [round(float(v), 2) for v in bbox],
             "position": snapped_p,
             "orientation": orient if orient in ["horizontal", "vertical", "slanted"] else "horizontal",
-            "confidence": float(d_elem.get("confidence", 0.90))
+            "confidence": _opt_float(d_elem.get("confidence"))
         })
 
     final_windows = []
@@ -307,7 +303,7 @@ def postprocess_floorplan_json(
             "bbox": [round(float(v), 2) for v in bbox],
             "position": snapped_p,
             "orientation": orient if orient in ["horizontal", "vertical", "slanted"] else "horizontal",
-            "confidence": float(win_elem.get("confidence", 0.90))
+            "confidence": _opt_float(win_elem.get("confidence"))
         })
 
     # 4. Refine room polygons
@@ -323,7 +319,7 @@ def postprocess_floorplan_json(
                 "type": str(r_elem.get("type", "undivided")),
                 "polygon": valid_poly,
                 "area_pixels": float(r_elem.get("area_pixels", 0.0)) or None,
-                "confidence": float(r_elem.get("confidence", 0.95))
+                "confidence": _opt_float(r_elem.get("confidence"))
             })
 
     # 5. Build validated Pydantic FloorPlanSchema

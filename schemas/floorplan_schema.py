@@ -42,7 +42,7 @@ class RoomElement(BaseModel):
         min_length=3
     )
     area_pixels: Optional[float] = Field(None, description="Calculated area of room polygon in px^2")
-    confidence: Optional[float] = Field(1.0, ge=0.0, le=1.0, description="Model prediction confidence")
+    confidence: Optional[float] = Field(None, ge=0.0, le=1.0, description="Confidence reported by the system; None when it reports none (never invented)")
 
     @field_validator("polygon")
     @classmethod
@@ -60,8 +60,8 @@ class WallElement(BaseModel):
     id: str = Field(..., description="Unique wall identifier, e.g. wall_1")
     start: List[float] = Field(..., description="[x, y] start coordinate")
     end: List[float] = Field(..., description="[x, y] end coordinate")
-    thickness: Optional[float] = Field(10.0, ge=1.0, description="Wall thickness in pixels")
-    confidence: Optional[float] = Field(1.0, ge=0.0, le=1.0, description="Model prediction confidence")
+    thickness: Optional[float] = Field(None, ge=1.0, description="Wall thickness in pixels; None when not known (no default is assumed)")
+    confidence: Optional[float] = Field(None, ge=0.0, le=1.0, description="Confidence reported by the system; None when it reports none (never invented)")
 
     @field_validator("start", "end")
     @classmethod
@@ -86,7 +86,7 @@ class DoorElement(BaseModel):
     bbox: List[float] = Field(..., description="Bounding box [x_min, y_min, x_max, y_max]")
     position: Optional[List[float]] = Field(None, description="Center coordinate [x, y]")
     orientation: Optional[OrientationEnum] = Field(OrientationEnum.HORIZONTAL, description="Door orientation")
-    confidence: Optional[float] = Field(1.0, ge=0.0, le=1.0, description="Model prediction confidence")
+    confidence: Optional[float] = Field(None, ge=0.0, le=1.0, description="Confidence reported by the system; None when it reports none (never invented)")
 
     @field_validator("bbox")
     @classmethod
@@ -112,7 +112,7 @@ class WindowElement(BaseModel):
     bbox: List[float] = Field(..., description="Bounding box [x_min, y_min, x_max, y_max]")
     position: Optional[List[float]] = Field(None, description="Center coordinate [x, y]")
     orientation: Optional[OrientationEnum] = Field(OrientationEnum.HORIZONTAL, description="Window orientation")
-    confidence: Optional[float] = Field(1.0, ge=0.0, le=1.0, description="Model prediction confidence")
+    confidence: Optional[float] = Field(None, ge=0.0, le=1.0, description="Confidence reported by the system; None when it reports none (never invented)")
 
     @field_validator("bbox")
     @classmethod

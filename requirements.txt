@@ -1,29 +1,10 @@
-# Core Deep Learning & VLM Fine-Tuning
-torch>=2.2.0
-torchvision>=0.17.0
-transformers>=4.48.0
-peft>=0.12.0
-accelerate>=0.33.0
-bitsandbytes>=0.43.0; sys_platform != "win32"
-
-# Schema Validation & Geometry
-pydantic>=2.7.0
-opencv-python-headless>=4.8.0
-pillow>=10.0.0
-numpy>=1.24.0
-scipy>=1.11.0
-shapely>=2.0.0
-pyyaml>=6.0
-
-# UI & Visualization
+# Dashboard dependencies only (Streamlit Community Cloud reads this file).
+# Training / GPU dependencies live in requirements-train.txt; test and tooling in requirements-dev.txt.
 streamlit>=1.35.0
-matplotlib>=3.7.0
+pydantic>=2.7.0
+numpy>=1.24.0
+pillow>=10.0.0
+opencv-python-headless>=4.8.0
 pandas>=2.0.0
-seaborn>=0.12.0
-python-pptx>=0.6.21
-
-# Testing & Utilities
-pytest>=7.4.0
-tqdm>=4.65.0
-requests>=2.31.0
-scikit-learn>=1.3.0
+pyyaml>=6.0
+shapely>=2.0.0

@@ -15,7 +15,6 @@ import logging
 from typing import Dict, Any, List, Tuple, Optional
 import numpy as np
 from scipy.optimize import linear_sum_assignment
-from shapely.geometry import Polygon
 
 from schemas.floorplan_schema import FloorPlanSchema
 
@@ -41,6 +40,7 @@ def compute_polygon_iou(poly1_pts: List[List[float]], poly2_pts: List[List[float
     """Computes geometric polygon IoU using Shapely."""
     if len(poly1_pts) < 3 or len(poly2_pts) < 3:
         return 0.0
+    from shapely.geometry import Polygon  # lazy: only polygon metrics need shapely
     try:
         p1 = Polygon(poly1_pts).buffer(0)
         p2 = Polygon(poly2_pts).buffer(0)
@@ -111,6 +111,7 @@ def match_elements_hungarian(
 
     matched_scores = []
     coord_errors = []
+    matched_pairs = []
     semantic_matches = 0
     tp = 0
 
@@ -118,6 +119,7 @@ def match_elements_hungarian(
         cost = cost_matrix[r, c]
         if cost < 1e5:  # Valid assignment under threshold
             tp += 1
+            matched_pairs.append((int(r), int(c)))
             if match_type in ["bbox", "polygon"]:
                 score = 1.0 - cost
                 matched_scores.append(float(score))
@@ -141,7 +143,8 @@ def match_elements_hungarian(
     extra_info = {
         "mean_coord_error": float(np.mean(coord_errors)) if coord_errors else 0.0,
         "semantic_matches": semantic_matches,
-        "semantic_accuracy": float(semantic_matches / tp) if tp > 0 else 0.0
+        "semantic_accuracy": float(semantic_matches / tp) if tp > 0 else 0.0,
+        "matched_pairs": matched_pairs,  # (pred_index, gt_index) for every true positive
     }
 
     return tp, fp, fn, matched_scores, extra_info
@@ -155,6 +158,9 @@ def evaluate_single_prediction(
     Evaluates one prediction against ground truth across all classes using Hungarian matching.
     """
     class_metrics = {}
+
+    # Every class reports "match_scores": per-true-positive IoU (doors/windows/rooms) or
+    # endpoint error in px (walls), so aggregation can pool matches instead of averaging averages.
 
     # 1. Walls (Threshold: 25.0 pixels endpoint distance)
     tp, fp, fn, scores, extra = match_elements_hungarian(
@@ -171,6 +177,7 @@ def evaluate_single_prediction(
         "recall": round(rec, 4),
         "f1": round(f1, 4),
         "mean_endpoint_error_px": round(extra["mean_coord_error"], 2),
+        "match_scores": [round(float(s), 3) for s in scores],
         "tp": tp, "fp": fp, "fn": fn,
         "pred_count": len(pred_schema.walls),
         "gt_count": len(gt_schema.walls)
@@ -192,6 +199,7 @@ def evaluate_single_prediction(
         "f1": round(f1, 4),
         "mean_iou": round(float(np.mean(scores)), 4) if scores else 0.0,
         "mean_coord_error_px": round(extra["mean_coord_error"], 2),
+        "match_scores": [round(float(s), 4) for s in scores],
         "tp": tp, "fp": fp, "fn": fn,
         "pred_count": len(pred_schema.doors),
         "gt_count": len(gt_schema.doors)
@@ -213,6 +221,7 @@ def evaluate_single_prediction(
         "f1": round(f1, 4),
         "mean_iou": round(float(np.mean(scores)), 4) if scores else 0.0,
         "mean_coord_error_px": round(extra["mean_coord_error"], 2),
+        "match_scores": [round(float(s), 4) for s in scores],
         "tp": tp, "fp": fp, "fn": fn,
         "pred_count": len(pred_schema.windows),
         "gt_count": len(gt_schema.windows)
@@ -234,6 +243,12 @@ def evaluate_single_prediction(
         "f1": round(f1, 4),
         "mean_iou": round(float(np.mean(scores)), 4) if scores else 0.0,
         "semantic_accuracy": round(extra["semantic_accuracy"], 4),
+        "match_scores": [round(float(s), 4) for s in scores],
+        # (predicted_type, ground_truth_type) for each matched room -> confusion matrix
+        "room_type_pairs": [
+            (pred_schema.rooms[p].type.lower(), gt_schema.rooms[g].type.lower())
+            for p, g in extra["matched_pairs"]
+        ],
         "tp": tp, "fp": fp, "fn": fn,
         "pred_count": len(pred_schema.rooms),
         "gt_count": len(gt_schema.rooms)

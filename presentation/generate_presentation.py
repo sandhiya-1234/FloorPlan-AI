@@ -4,7 +4,8 @@ PowerPoint Presentation Generator for FloorPlan-AI Assessment.
 Generates a clean, professional, academic-style presentation using python-pptx:
 - 14 distinct slides adhering strictly to assessment requirements
 - Minimalist typography (Dark Slate text on crisp White background with Blue accent)
-- Real experimental metrics and embedded loss/comparison evaluation charts
+- Every number on the results slide is read from outputs/evaluation/summary.json;
+  nothing is hard-coded. With no such file the slide says that no verified results exist.
 """
 
 import os
@@ -92,13 +93,13 @@ def build_presentation():
     p0.font.color.rgb = COLOR_ACCENT_BLUE
 
     p1 = tf.add_paragraph()
-    p1.text = "Fine-Tuning Vision-Language Models (Qwen2.5-VL-3B with LoRA) for Architectural CAD Parsing"
+    p1.text = "Fine-tuning Qwen2.5-VL-3B-Instruct with LoRA to parse floor plans into structured JSON"
     p1.font.size = Pt(18)
     p1.font.color.rgb = COLOR_TEXT_DARK
     p1.space_before = Pt(10)
 
     p2 = tf.add_paragraph()
-    p2.text = "Technical Assessment Submission | Machine Learning & Computer Vision Research"
+    p2.text = "Technical assessment | Status: pipeline under verification; see the results slide for what has actually been measured"
     p2.font.size = Pt(13)
     p2.font.color.rgb = COLOR_TEXT_MUTED
     p2.space_before = Pt(24)
@@ -121,7 +122,7 @@ def build_presentation():
     s3 = create_blank_slide(prs)
     add_slide_header(s3, "Project Objectives & Key Engineering Deliverables")
     add_bullet_points(s3, [
-        "1. Vision-Language Fine-Tuning: Adapt a state-of-the-art multimodal VLM (Qwen2.5-VL-3B-Instruct) using parameter-efficient LoRA/QLoRA on architectural datasets.",
+        "1. Vision-Language Fine-Tuning: Adapt a pretrained multimodal VLM (Qwen2.5-VL-3B-Instruct) using parameter-efficient LoRA/QLoRA on architectural datasets.",
         "2. Ground-Truth Data Pipeline: Build an automated ingestion engine for CubiCasa5K vector SVG annotations, converting spaces and structural lines into normalized coordinates.",
         "3. Strict Pydantic Schema: Enforce coordinate boundary checks, unique entity identifiers, non-zero wall lengths, and polygon closure.",
         "4. Geometric Postprocessing Engine: Formulate algorithmic refinement for orthogonal wall angle snapping, polygon topology validation (Shapely), and door/window wall attachment.",
@@ -133,9 +134,9 @@ def build_presentation():
     # Slide 4: Proposed System Architecture
     # ----------------------------------------------------
     s4 = create_blank_slide(prs)
-    add_slide_header(s4, "Proposed System Architecture: End-to-End Multimodal Pipeline")
+    add_slide_header(s4, "Planned System Architecture: End-to-End Multimodal Pipeline (design, see README for implementation status)")
     add_bullet_points(s4, [
-        "1. Image Ingestion & Preprocessing:\n   • Contrast-limited adaptive histogram equalization (CLAHE) for drafting line enhancement\n   • Aspect-ratio preserving resolution normalization to 1024x1024 px",
+        "1. Image Ingestion & Preprocessing:\n   • Contrast-limited adaptive histogram equalization (CLAHE) for drafting line enhancement\n   • Aspect-ratio-preserving letterbox onto a 1008x1008 canvas (coordinates mapped back to the original image)",
         "2. Multimodal VLM Representation:\n   • Dynamic resolution Vision Transformer (ViT) patch extraction without spatial distortion\n   • Conversational instruction prompt guiding structured architectural decomposition",
         "3. Parameter-Efficient LoRA Adapter:\n   • Low-rank matrices (r=16, alpha=32) attached to query, key, value, and MLP projection layers\n   • Masked target loss computing cross-entropy strictly on assistant JSON tokens",
         "4. Geometric Postprocessing & JSON Sanitization:\n   • Non-Maximum Suppression (IoU >= 0.75) for duplicate entity elimination\n   • Orthogonal snapping aligning near-perpendicular walls to exact CAD axes\n   • Pydantic schema validation ensuring watertight geometric integrity."
@@ -147,20 +148,20 @@ def build_presentation():
     s5 = create_blank_slide(prs)
     add_slide_header(s5, "Selected Pretrained Model: Qwen2.5-VL-3B-Instruct")
     add_bullet_points(s5, [
-        "Model Selection Justification:\n  • Native dynamic resolution Vision Transformer avoids pixel distortion on non-square floor plans.\n  • Multimodal 3D-RoPE positional embeddings provide strong spatial-coordinate grounding.\n  • 3B parameter scale provides state-of-the-art vision-language reasoning while remaining highly efficient.",
-        "Architectural Capabilities:\n  • Strong conversational instruction following with native JSON output structuring.\n  • Exceptional OCR and drafting notation comprehension (e.g. recognizing room text labels).",
-        "Compute & Memory Profile:\n  • Full FP16: ~7 GB weights (~14-16 GB training VRAM).\n  • 4-Bit QLoRA: ~2.2 GB VRAM for model weights, enabling full fine-tuning on consumer GPUs or Google Colab T4 instances."
+        "Model Selection Justification:\n  • Native dynamic resolution Vision Transformer avoids pixel distortion on non-square floor plans.\n  • Multimodal 3D-RoPE positional embeddings provide strong spatial-coordinate grounding.\n  • 3B parameters fit LoRA/QLoRA fine-tuning on a free Colab T4.",
+        "Architectural Capabilities:\n  • Instruction-following chat model with image input and absolute-coordinate grounding (per the model card); how well it parses floor plans is what the evaluation measures.",
+        "Compute & Memory Profile:\n  • Full FP16: ~7 GB weights (~14-16 GB training VRAM).\n  • 4-Bit QLoRA: ~2.2 GB VRAM for model weights, which is what makes parameter-efficient fine-tuning feasible on a Colab T4 (not full fine-tuning)."
     ])
 
     # ----------------------------------------------------
     # Slide 6: Dataset and Annotation Format
     # ----------------------------------------------------
     s6 = create_blank_slide(prs)
-    add_slide_header(s6, "Dataset: CubiCasa5K Architectural Benchmark")
+    add_slide_header(s6, "Dataset: CubiCasa5K (target) and current status")
     add_bullet_points(s6, [
-        "Dataset Overview:\n  • Source: CubiCasa5K (5,000 architectural floor plans under CC BY-NC-SA 4.0 research license).\n  • High-fidelity vector annotations in SVG format with dense multi-room layouts.",
+        "Dataset Overview:\n  • Target source: CubiCasa5K (5,000 floor plans, CC BY-NC-SA 4.0, vector SVG annotations).\n  • Status: real data not yet ingested. An earlier set of 15 synthetic fixtures was found to be unusable (identical images, mismatched labels) and has been discarded; see docs/audit/.",
         "Category Extraction & Mapping:\n  • Walls: SVG <line> and <polyline> elements mapped to [start_x, start_y] -> [end_x, end_y] segments.\n  • Doors: Single and double door symbols mapped to bounding boxes, positions, and orientations.\n  • Windows: Perimeter opening symbols mapped to bounding boxes and midpoints.\n  • Rooms: Dense <polygon> space elements mapped to room types (Bedroom, Bathroom, Kitchen, Living Room, etc.).",
-        "Leakage Prevention:\n  • Partitioning is performed strictly by floor-plan image ID (70% Train, 15% Validation, 15% Test) with a fixed seed (42)."
+        "Leakage Prevention:\n  • Splits are by floor-plan ID, then checked for exact-duplicate images, perceptual near-duplicates and annotation similarity across splits."
     ])
 
     # ----------------------------------------------------
@@ -169,9 +170,9 @@ def build_presentation():
     s7 = create_blank_slide(prs)
     add_slide_header(s7, "Image Preprocessing & Coordinate Transformation")
     add_bullet_points(s7, [
-        "1. Color & Resolution Normalization:\n   • BGR-to-RGB conversion followed by bilinear scaling to 1024x1024 resolution.\n   • Uniform scale factor tracking: scale_x = W_target / W_orig, scale_y = H_target / H_orig.",
+        "1. Color & Resolution Normalization:\n   • Letterbox: one uniform scale (long side to 1008 px) plus white padding; no distortion.\n   • Scale and padding offsets are stored so predictions map back to original-image coordinates.",
         "2. Contrast & Edge Enhancement:\n   • Contrast Limited Adaptive Histogram Equalization (CLAHE) applied to the luminance channel.\n   • Sharpens low-contrast blueprint drafting marks without introducing noise.",
-        "3. Coordinate Mapping Integrity:\n   • All ground-truth annotations are scaled synchronously with the raster canvas.\n   • Strict preservation of geometric aspect ratios to prevent warping room angles."
+        "3. Coordinate Mapping Integrity:\n   • All ground-truth annotations are scaled synchronously with the raster canvas.\n   • Aspect ratio is preserved (letterbox), so room angles are not warped."
     ])
 
     # ----------------------------------------------------
@@ -190,10 +191,10 @@ def build_presentation():
     # Slide 9: LoRA/QLoRA Hyperparameters
     # ----------------------------------------------------
     s9 = create_blank_slide(prs)
-    add_slide_header(s9, "LoRA / QLoRA Hyperparameter Configuration")
+    add_slide_header(s9, "LoRA / QLoRA Hyperparameter Configuration (planned; not yet executed)")
     add_bullet_points(s9, [
-        "Fine-Tuning Hyperparameters:\n  • LoRA Rank (r): 16\n  • LoRA Alpha: 32 (Scaling ratio = 2.0)\n  • LoRA Dropout: 0.05\n  • Target Modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]\n  • Trainable Parameters: ~1.2% of total model parameters (~36M parameters).",
-        "Optimization Parameters:\n  • Optimizer: AdamW (weight_decay = 0.01)\n  • Learning Rate: 2e-4 with Linear Warmup (warmup_ratio = 0.03)\n  • Epochs: 3 | Batch Size: 1 per device | Gradient Accumulation Steps: 8\n  • Precision: Mixed Precision (BF16 on Ampere+, FP16 on T4) with Gradient Checkpointing."
+        "Fine-Tuning Hyperparameters:\n  • LoRA Rank (r): 16\n  • LoRA Alpha: 32 (Scaling ratio = 2.0)\n  • LoRA Dropout: 0.05\n  • Target Modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]\n  • Trainable parameters: measured and logged at training time (not assumed).",
+        "Optimization Parameters:\n  • Optimizer: AdamW (weight_decay = 0.01)\n  • Learning Rate: 2e-4 with Linear Warmup (warmup_ratio = 0.03)\n  • Epochs: 3 | Batch Size: 1 per device | Gradient Accumulation Steps: 8\n  • Precision: FP16 mixed precision on T4 (no BF16) with gradient checkpointing."
     ])
 
     # ----------------------------------------------------
@@ -212,45 +213,44 @@ def build_presentation():
     s11 = create_blank_slide(prs)
     add_slide_header(s11, "Evaluation Methodology: Multi-Faceted Metric Suite")
     add_bullet_points(s11, [
-        "1. Architectural Object Detection Metrics:\n   • Precision, Recall, and F1-Score calculated via greedy bipartite matching.\n   • True Positives defined by spatial intersection thresholds.",
+        "1. Architectural Object Detection Metrics:\n   • Precision, Recall, and F1-Score calculated via Hungarian (optimal) bipartite matching.\n   • True Positives defined by spatial intersection thresholds.",
         "2. Geometric Alignment Metrics:\n   • Doors & Windows: Bounding Box Intersection over Union (IoU >= 0.5).\n   • Rooms: Polygon IoU computed using exact geometric polygon intersections (Shapely).\n   • Walls: Mean endpoint distance error (tolerance <= 25 px).",
         "3. JSON Integrity Metrics:\n   • JSON Syntax Validity Rate (% parseable without error).\n   • Pydantic Schema Validation Compliance Rate (% passing strict spatial constraints)."
     ])
 
     # ----------------------------------------------------
-    # Slide 12: Experimental Results
+    # Slide 12: Experimental Results (read from outputs/evaluation/summary.json only)
     # ----------------------------------------------------
     s12 = create_blank_slide(prs)
-    add_slide_header(s12, "Experimental Results: Benchmark Comparison on Unseen Test Split")
-
-    # Add text summary on left, image on right
-    tx_box = s12.shapes.add_textbox(Inches(0.8), Inches(1.8), Inches(5.8), Inches(5.0))
-    tf = tx_box.text_frame
-    tf.word_wrap = True
-    p = tf.paragraphs[0]
-    p.text = "Benchmark Highlights (Held-Out Test Set):"
-    p.font.size = Pt(15)
-    p.font.bold = True
-    p.font.color.rgb = COLOR_ACCENT_BLUE
-
-    res_pts = [
-        "• Fine-Tuned Model Macro F1: 1.000 vs. Base Model: 0.381 (+61.9% improvement).",
-        "• JSON Validity Rate: 100% vs. Base Model: 82% (Zero JSON decode failures).",
-        "• Schema Compliance Rate: 100% vs. Base Model: 65% (Full spatial constraint adherence).",
-        "• Wall Segment Detection: F1 = 1.000 with sub-pixel snapped orthogonality.",
-        "• Room Polygon IoU: 1.000 (Fine-Tuned) vs. 0.914 (Base Model)."
-    ]
-    for pt in res_pts:
-        p_sub = tf.add_paragraph()
-        p_sub.text = pt
-        p_sub.font.size = Pt(13)
-        p_sub.font.color.rgb = COLOR_TEXT_DARK
-        p_sub.space_before = Pt(8)
-
-    # Embed comparison chart on right if present
-    comp_img = Path("outputs/evaluation/comparison.png")
-    if comp_img.exists():
-        s12.shapes.add_picture(str(comp_img), Inches(6.8), Inches(2.0), width=Inches(5.8))
+    add_slide_header(s12, "Experimental Results: Held-Out Test Split")
+    summary_path = Path("outputs/evaluation/summary.json")
+    if not summary_path.exists():
+        add_bullet_points(s12, [
+            "No verified evaluation results exist yet.",
+            "Earlier reported numbers (Macro F1 1.000, etc.) were invalid and have been withdrawn: they came from leaked or simulated evaluation. Details: docs/audit/.",
+            "Results will appear here once the zero-shot, fine-tuned and OpenCV-baseline systems have been evaluated on unseen CubiCasa5K floor plans.",
+        ], top=Inches(1.8))
+    else:
+        import json
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        systems = summary["systems"]
+        cols = ["System", "Failed", "JSON valid", "Wall F1", "Door F1", "Window F1", "Room F1", "Macro F1"]
+        rows, cols_n = len(systems) + 1, len(cols)
+        table = s12.shapes.add_table(rows, cols_n, Inches(0.8), Inches(1.9), Inches(11.7), Inches(0.5) * rows).table
+        for j, name in enumerate(cols):
+            table.cell(0, j).text = name
+        fmt = lambda v: "n/a" if v is None else f"{v:.3f}"
+        for i, sysm in enumerate(systems, 1):
+            vals = [sysm["label"], f'{sysm["n_failed"]}/{summary["n_test_images"]}', fmt(sysm["json_validity_rate"]),
+                    fmt(sysm["f1"]["walls"]), fmt(sysm["f1"]["doors"]), fmt(sysm["f1"]["windows"]),
+                    fmt(sysm["f1"]["rooms"]), fmt(sysm["macro_f1"])]
+            for j, v in enumerate(vals):
+                table.cell(i, j).text = v
+        note = s12.shapes.add_textbox(Inches(0.8), Inches(1.9) + Inches(0.5) * rows + Inches(0.3), Inches(11.7), Inches(2.0))
+        ntf = note.text_frame
+        ntf.word_wrap = True
+        ntf.text = f'Test set: {summary["n_test_images"]} unseen floor plans. ' + " ".join(summary.get("limitations", []))
+        ntf.paragraphs[0].font.size = Pt(12)
 
     # ----------------------------------------------------
     # Slide 13: Challenges and Limitations
@@ -261,7 +261,7 @@ def build_presentation():
         "1. Token Context Length in Dense Multi-Room Plans:\n   • Large complexes with 50+ rooms generate >4,000 output tokens, requiring token sequence budgeting.",
         "2. Curved and Non-Manhattan Wall Geometries:\n   • Current orthogonal postprocessing assumes predominantly 90-degree drafting angles; circular walls require spline approximation.",
         "3. Blueprint Scan Artifacts & Text Occlusion:\n   • Text dimension callouts intersecting wall lines occasionally disrupt edge continuity.",
-        "4. CAD Precision vs. Neural Approximation:\n   • VLM predictions produce high-fidelity approximate coordinates (~5-10px tolerance); geometric snapping is vital to bridge the gap to millimeter CAD tolerances."
+        "4. CAD Precision vs. Neural Approximation:\n   • VLM coordinates are approximate; the achieved pixel error is reported on the results slide, and postprocessing is logged so it cannot hide model errors."
     ])
 
     # ----------------------------------------------------
@@ -270,8 +270,8 @@ def build_presentation():
     s14 = create_blank_slide(prs)
     add_slide_header(s14, "Conclusion & Future Research Directions")
     add_bullet_points(s14, [
-        "Summary of Achievements:\n  • Developed a fully working, reproducible, end-to-end multimodal floor plan detection system.\n  • Successfully fine-tuned VLM with LoRA on CubiCasa5K architectural annotations.\n  • Demonstrated massive improvements in schema adherence (100%) and macro F1 (1.000) over base models.\n  • Engineered robust geometric postprocessing for CAD-ready structured JSON generation.",
-        "Future Enhancements:\n  • 2D-to-3D IFC/BIM Generation: Direct extrusion of validated room polygons and walls into Industry Foundation Classes (IFC) 3D mesh models.\n  • Multi-Storey Floor Plan Alignment: Joint cross-floor vertical duct and stairwell matching.\n  • High-Resolution Tiling: Sliding window inference for massive architectural engineering blueprints (4K+ resolutions)."
+        "Status:\n  \u2022 The pipeline code (schema, preprocessing, LoRA trainer, inference, evaluation) is implemented; what has actually been executed and measured is stated in the README status table and the results slide.\n  \u2022 Fine-tuning is claimed only if a verified LoRA adapter exists and the evaluation above was run with it.",
+        "Next steps:\n  \u2022 Train on a larger real CubiCasa5K subset on Colab and evaluate on a larger unseen test split.\n  \u2022 Compare against zero-shot Qwen2.5-VL and the OpenCV baseline with identical metrics.\n  \u2022 Future work: 2D-to-3D IFC/BIM export, multi-storey alignment, tiled inference for very large plans."
     ])
 
     out_pptx = Path("presentation/Floorplan_AI_Assessment.pptx")

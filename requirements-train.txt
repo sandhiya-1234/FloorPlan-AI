@@ -1,0 +1,21 @@
+# Training and inference on a CUDA GPU (Google Colab T4). Not needed for the dashboard.
+# Qwen2.5-VL needs transformers >= 4.49 (version floor from the model documentation as I know it;
+# not verified against PyPI from the development sandbox). The exact installed versions are
+# recorded in every training run manifest.
+torch>=2.2.0
+torchvision>=0.17.0
+transformers>=4.49.0
+peft>=0.12.0
+accelerate>=0.33.0
+bitsandbytes>=0.43.0; sys_platform != "win32"
+qwen-vl-utils>=0.0.8
+pillow>=10.0.0
+numpy>=1.24.0
+pydantic>=2.7.0
+pyyaml>=6.0
+shapely>=2.0.0
+scipy>=1.11.0
+opencv-python-headless>=4.8.0
+matplotlib>=3.7.0
+tqdm>=4.65.0
+remotezip>=0.12.0

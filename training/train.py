@@ -106,7 +106,15 @@ def run_training(config: FloorPlanTrainingConfig, quick_cpu_mode: bool = False):
 
     # 1. Audit hardware
     hw = check_cuda_environment()
-    device = torch.device("cuda" if hw["has_cuda"] and not quick_cpu_mode else "cpu")
+    if not hw["has_cuda"] or quick_cpu_mode:
+        # Integrity guard: the CPU branch below trains a toy 2-layer model and used to write
+        # its weights where a real adapter belongs. It is unreachable now and is deleted when
+        # train.py is rewritten (Phase 3). Real training runs on a Colab GPU only.
+        raise RuntimeError(
+            "Qwen2.5-VL LoRA training requires a CUDA GPU (use the Google Colab T4, see COLAB.md). "
+            "No CPU fallback exists: a toy model must never be saved as the project's adapter."
+        )
+    device = torch.device("cuda")
     logger.info(f"Target Execution Device: {device}")
 
     # Create artifact directories

@@ -1,299 +1,167 @@
 """
-FloorPlan-AI: Streamlit Application.
+FloorPlan-AI: Streamlit dashboard.
 
-Interactive visual dashboard for fine-tuned Vision-Language Model 2D floor-plan detection.
-Supports single-image upload, interactive visualization, Pydantic JSON inspection,
-and model benchmark exploration.
+This app does NOT run Qwen2.5-VL itself. It shows:
+  * PRECOMPUTED example predictions (clearly labelled, produced offline on Colab), and
+  * verified evaluation results read from outputs/evaluation/summary.json.
+A "live inference" button is offered only when a verified LoRA adapter exists on disk, and any
+failure is shown as an error, never replaced by a fake result.
 """
 
-import os
-import sys
 import json
-import logging
+import sys
 from pathlib import Path
-from typing import Optional
-import streamlit as st
+
 import cv2
 import numpy as np
 import pandas as pd
+import streamlit as st
 from PIL import Image
 
-# Ensure project root is in sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from schemas.floorplan_schema import FloorPlanSchema
-from inference.predict import predict_floorplan
+from inference.adapter_check import AdapterError, inspect_adapter
+from inference.predict import DEFAULT_ADAPTER_DIR, DEFAULT_BASE_MODEL, predict_floorplan
+from inference.records import load_record
 from preprocessing.visualize_annotations import draw_floorplan_annotations
+from schemas.floorplan_schema import FloorPlanSchema
 
-# Set page configuration
-st.set_page_config(
-    page_title="FloorPlan-AI | Architectural Detection",
-    page_icon="📐",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+EXAMPLES_DIR = Path("outputs/predictions/examples")
+SUMMARY_PATH = Path("outputs/evaluation/summary.json")
 
-# Custom minimal, clean styling
-st.markdown("""
-<style>
-    .main { background-color: #FAFAFA; font-family: 'Inter', -apple-system, sans-serif; }
-    h1, h2, h3 { color: #0F172A; font-weight: 700; }
-    .stMetric { background-color: #FFFFFF; padding: 16px; border-radius: 8px; border: 1px solid #E2E8F0; }
-    .element-card { background: white; padding: 1.2rem; border-radius: 8px; border: 1px solid #E2E8F0; margin-bottom: 1rem; }
-    .badge-wall { background-color: #1E293B; color: white; padding: 2px 8px; border-radius: 4px; }
-    .badge-door { background-color: #F59E0B; color: white; padding: 2px 8px; border-radius: 4px; }
-    .badge-window { background-color: #06B6D4; color: white; padding: 2px 8px; border-radius: 4px; }
-    .badge-room { background-color: #3B82F6; color: white; padding: 2px 8px; border-radius: 4px; }
-</style>
-""", unsafe_allow_html=True)
+st.set_page_config(page_title="FloorPlan-AI", page_icon="📐", layout="wide", initial_sidebar_state="expanded")
 
 
-def load_metrics_data():
-    metrics_path = Path("outputs/evaluation/metrics.json")
-    if metrics_path.exists():
-        with open(metrics_path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return None
+def fmt_conf(value) -> str:
+    return "not reported" if value is None else f"{value:.2f}"
 
 
-def main():
-    st.title("📐 FloorPlan-AI: 2D Architectural Element Detection")
-    st.markdown(
-        "**Fine-Tuned Vision-Language Model (Qwen2.5-VL-3B with LoRA)** for automated parsing of "
-        "architectural walls, doors, windows, and rooms into CAD-ready structured JSON."
-    )
+def adapter_status():
+    """(ok, info_or_reason). Verifies files on disk only; it does not load any model."""
+    try:
+        return True, inspect_adapter(DEFAULT_ADAPTER_DIR, expected_base_model=DEFAULT_BASE_MODEL)
+    except AdapterError as e:
+        return False, str(e)
 
-    # Sidebar Navigation & Settings
-    st.sidebar.header("Navigation & Model")
-    app_mode = st.sidebar.radio(
-        "Choose Mode:",
-        ["Floor Plan Detector", "Evaluation Benchmark", "Dataset Explorer", "System Architecture"]
-    )
 
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("System Status")
-    adapter_path = Path("artifacts/adapters/final_lora_adapter")
-    if adapter_path.exists():
-        st.sidebar.success("LoRA Adapter: Ready (Loaded)")
+def show_prediction(image_bgr: np.ndarray, schema: FloorPlanSchema) -> None:
+    left, right = st.columns(2)
+    left.markdown("#### Input floor plan")
+    left.image(cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB), use_container_width=True)
+    right.markdown("#### Predicted elements")
+    annotated = draw_floorplan_annotations(image_bgr.copy(), schema)
+    right.image(cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB), use_container_width=True)
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Walls", len(schema.walls))
+    c2.metric("Doors", len(schema.doors))
+    c3.metric("Windows", len(schema.windows))
+    c4.metric("Rooms", len(schema.rooms))
+
+    tab_json, tab_rooms, tab_walls = st.tabs(["JSON", "Rooms", "Walls"])
+    with tab_json:
+        payload = schema.to_compact_dict()
+        st.download_button("Download JSON", json.dumps(payload, indent=2), "floorplan_prediction.json", "application/json")
+        st.json(payload)
+    with tab_rooms:
+        st.dataframe(pd.DataFrame([
+            {"id": r.id, "type": r.type, "vertices": len(r.polygon), "area_px": r.area_pixels,
+             "confidence": fmt_conf(r.confidence)} for r in schema.rooms]), use_container_width=True)
+    with tab_walls:
+        st.dataframe(pd.DataFrame([
+            {"id": w.id, "start": w.start, "end": w.end, "thickness_px": w.thickness,
+             "confidence": fmt_conf(w.confidence)} for w in schema.walls]), use_container_width=True)
+
+
+def page_detector(adapter_ok: bool) -> None:
+    st.subheader("Floor plan detector")
+
+    st.markdown("##### Precomputed examples")
+    st.caption("Produced offline by the evaluated system; **not** computed live by this app.")
+    records = sorted(EXAMPLES_DIR.glob("*.pred.json")) if EXAMPLES_DIR.exists() else []
+    if not records:
+        st.info("No precomputed examples have been published yet (outputs/predictions/examples/).")
     else:
-        st.sidebar.warning("LoRA Adapter: Missing (Run train.py)")
-
-    st.sidebar.info("Model: **Qwen2.5-VL-3B-Instruct**\nTuning: **LoRA (r=16, alpha=32)**\nBackend: **PyTorch + Peft**")
-
-    # Mode 1: Detector
-    if app_mode == "Floor Plan Detector":
-        st.subheader("1. Select or Upload Floor Plan Image")
-
-        col_select, col_upload = st.columns([1, 1])
-
-        sample_choice = col_select.selectbox(
-            "Select Sample Benchmark Image:",
-            ["samples/sample1.png", "samples/sample2.png", "samples/sample3.png"]
-        )
-
-        uploaded_file = col_upload.file_uploader(
-            "Or Upload Floor Plan (PNG / JPG):",
-            type=["png", "jpg", "jpeg"]
-        )
-
-        # Determine target image
-        temp_img_path = Path("samples/temp_input.png")
-        if uploaded_file is not None:
-            image = Image.open(uploaded_file).convert("RGB")
-            image.save(temp_img_path)
-            active_image_path = str(temp_img_path)
+        pick = st.selectbox("Example", [r.name.replace(".pred.json", "") for r in records])
+        rec = load_record(EXAMPLES_DIR / f"{pick}.pred.json")
+        img_path = EXAMPLES_DIR / f"{pick}.png"
+        st.markdown(f"**System:** `{rec['system']}`  |  **Status:** {rec['status']}")
+        with st.expander("Run metadata"):
+            st.json(rec.get("meta", {}))
+        if rec["status"] == "failed":
+            st.error(f"This example failed at stage '{rec['failure_stage']}': {rec['error']}")
+        elif img_path.exists():
+            show_prediction(cv2.imread(str(img_path)), FloorPlanSchema(**rec["prediction"]))
         else:
-            active_image_path = sample_choice
+            st.warning(f"Image {img_path.name} is missing next to the record.")
 
-        # Display raw image
-        raw_img = cv2.imread(active_image_path)
-        if raw_img is not None:
-            col_left, col_right = st.columns(2)
-            with col_left:
-                st.markdown("#### Input Floor Plan")
-                st.image(cv2.cvtColor(raw_img, cv2.COLOR_BGR2RGB), use_container_width=True)
-
-            run_btn = st.button("🚀 Run Fine-Tuned Model Inference", type="primary")
-
-            if run_btn or "last_schema" in st.session_state:
-                with st.spinner("Executing LoRA adapter inference and geometric postprocessing..."):
-                    schema = predict_floorplan(
-                        image_path=active_image_path,
-                        adapter_path="artifacts/adapters/final_lora_adapter",
-                        save_vis=False
-                    )
-                    st.session_state["last_schema"] = schema
-                    st.session_state["last_img_path"] = active_image_path
-
-                with col_right:
-                    st.markdown("#### Detected Architectural Elements")
-                    annotated = draw_floorplan_annotations(raw_img.copy(), schema)
-                    st.image(cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB), use_container_width=True)
-
-                st.markdown("---")
-                st.subheader("Detected Architectural Counts")
-                m1, m2, m3, m4 = st.columns(4)
-                m1.metric("Walls Detected", len(schema.walls))
-                m2.metric("Doors Detected", len(schema.doors))
-                m3.metric("Windows Detected", len(schema.windows))
-                m4.metric("Rooms Detected", len(schema.rooms))
-
-                # Tabs for detailed results
-                tab_json, tab_rooms, tab_walls = st.tabs(["Structured JSON Output", "Rooms Detail", "Walls & Openings"])
-
-                with tab_json:
-                    json_str = json.dumps(schema.to_compact_dict(), indent=2)
-                    st.download_button(
-                        label="📥 Download Structured Floor Plan JSON",
-                        data=json_str,
-                        file_name=f"{Path(active_image_path).stem}_detected.json",
-                        mime="application/json"
-                    )
-                    st.json(schema.to_compact_dict())
-
-                with tab_rooms:
-                    room_data = [
-                        {
-                            "Room ID": r.id,
-                            "Classification": r.type.upper(),
-                            "Vertices": len(r.polygon),
-                            "Area (sq px)": f"{r.area_pixels:,.0f}" if r.area_pixels else "N/A",
-                            "Confidence": f"{r.confidence:.2f}"
-                        }
-                        for r in schema.rooms
-                    ]
-                    st.dataframe(pd.DataFrame(room_data), use_container_width=True)
-
-                with tab_walls:
-                    w_data = [
-                        {
-                            "Wall ID": w.id,
-                            "Start [X, Y]": f"[{w.start[0]:.1f}, {w.start[1]:.1f}]",
-                            "End [X, Y]": f"[{w.end[0]:.1f}, {w.end[1]:.1f}]",
-                            "Thickness (px)": w.thickness,
-                            "Confidence": f"{w.confidence:.2f}"
-                        }
-                        for w in schema.walls
-                    ]
-                    st.dataframe(pd.DataFrame(w_data), use_container_width=True)
-
-    # Mode 2: Evaluation Benchmark
-    elif app_mode == "Evaluation Benchmark":
-        st.subheader("Model Evaluation & Zero-Shot Benchmark Comparison")
-        st.markdown(
-            "Evaluation conducted on an **unseen held-out test split** (partitioned strictly by image ID to avoid data leakage)."
-        )
-
-        metrics = load_metrics_data()
-        if metrics:
-            col1, col2 = st.columns(2)
-            with col1:
-                st.markdown("#### Fine-Tuned Model (LoRA)")
-                ft = metrics["fine_tuned_model"]
-                st.metric("Macro F1-Score", f"{ft['macro_f1']:.4f}")
-                st.metric("JSON Validity Rate", f"{ft['json_validity_rate']*100:.0f}%")
-                st.metric("Pydantic Schema Validation", f"{ft['schema_validation_rate']*100:.0f}%")
-
-            with col2:
-                st.markdown("#### Pretrained Base Model (Zero-Shot)")
-                base = metrics["base_model"]
-                st.metric("Macro F1-Score", f"{base['macro_f1']:.4f}")
-                st.metric("JSON Validity Rate", f"{base['json_validity_rate']*100:.0f}%")
-                st.metric("Pydantic Schema Validation", f"{base['schema_validation_rate']*100:.0f}%")
-
-            st.markdown("---")
-            st.markdown("#### Class-wise Performance Comparison")
-            comp_img_path = Path("outputs/evaluation/comparison.png")
-            if comp_img_path.exists():
-                st.image(str(comp_img_path), use_container_width=True)
-
-            csv_path = Path("outputs/evaluation/classification_report.csv")
-            if csv_path.exists():
-                st.markdown("#### Detailed Classification Report Table")
-                df_rep = pd.read_csv(csv_path)
-                st.dataframe(df_rep, use_container_width=True)
-
-            err_img_path = Path("outputs/evaluation/error_analysis.png")
-            if err_img_path.exists():
-                st.markdown("#### Diagnostic Error Analysis & Ablation Breakdown")
-                st.image(str(err_img_path), use_container_width=True)
-
-            loss_img_path = Path("outputs/evaluation/training_loss.png")
-            if loss_img_path.exists():
-                st.markdown("#### Training Loss Convergence (LoRA Adaptation)")
-                st.image(str(loss_img_path), use_container_width=True)
+    st.markdown("---")
+    st.markdown("##### Live inference")
+    uploaded = st.file_uploader("Upload a floor plan (PNG/JPG)", type=["png", "jpg", "jpeg"])
+    if not adapter_ok:
+        st.warning("Live inference is disabled: no verified LoRA adapter (see sidebar). "
+                   "Free Streamlit hosting also has no GPU; live inference needs a GPU backend.")
+        return
+    if uploaded is not None and st.button("Run live inference"):
+        tmp = Path("outputs/predictions/_upload.png")
+        tmp.parent.mkdir(parents=True, exist_ok=True)
+        Image.open(uploaded).convert("RGB").save(tmp)
+        try:
+            schema = predict_floorplan(str(tmp), save_vis=False)
+        except Exception as e:  # noqa: BLE001 - shown to the user, never replaced by fake output
+            st.error(f"Inference failed: {type(e).__name__}: {e}")
         else:
-            st.info("Run `python evaluation/evaluate.py` to generate complete evaluation metrics.")
+            st.session_state["live"] = (cv2.imread(str(tmp)), schema)
+    if "live" in st.session_state:
+        st.caption("LIVE result")
+        show_prediction(*st.session_state["live"])
 
-    # Mode 3: Dataset Explorer
-    elif app_mode == "Dataset Explorer":
-        st.subheader("CubiCasa5K Architectural Dataset Exploration")
-        st.markdown(
-            "CubiCasa5K provides 5,000 architectural floor plans with dense vector annotations "
-            "(spaces, walls, doors, windows). Our pipeline converts raw SVG primitives into normalized coordinates."
-        )
 
-        processed_dir = Path("dataset/processed")
-        if processed_dir.exists():
-            sample_pngs = sorted(list(processed_dir.glob("*.png")))
-            st.write(f"Total Processed Floor Plans: **{len(sample_pngs)}**")
+def page_evaluation() -> None:
+    st.subheader("Evaluation (verified results only)")
+    if not SUMMARY_PATH.exists():
+        st.info("No verified evaluation results yet. Earlier numbers were invalid and have been withdrawn "
+                "(see docs/audit/). Results appear here after the three systems are evaluated on unseen plans.")
+        return
+    summary = json.loads(SUMMARY_PATH.read_text(encoding="utf-8"))
+    st.write(f"Unseen test floor plans: **{summary['n_test_images']}**")
+    for note in summary.get("limitations", []):
+        st.warning(note)
+    st.dataframe(pd.DataFrame([{
+        "system": s["label"], "failed": f"{s['n_failed']}/{summary['n_test_images']}",
+        "JSON valid": s["json_validity_rate"], "wall F1": s["f1"]["walls"], "door F1": s["f1"]["doors"],
+        "window F1": s["f1"]["windows"], "room F1": s["f1"]["rooms"], "macro F1": s["macro_f1"],
+        "room type acc.": s.get("room_type_accuracy")} for s in summary["systems"]]), use_container_width=True)
 
-            if sample_pngs:
-                pick = st.selectbox("Select Processed Sample:", [p.name for p in sample_pngs])
-                chosen_png = processed_dir / pick
-                chosen_json = chosen_png.with_suffix(".json")
 
-                c1, c2 = st.columns(2)
-                with c1:
-                    st.image(str(chosen_png), caption=f"Processed Image ({pick})", use_container_width=True)
-                with c2:
-                    if chosen_json.exists():
-                        with open(chosen_json, "r") as f:
-                            gt_d = json.load(f)
-                        st.markdown(f"**Elements in {pick}:**")
-                        st.write(f"- Walls: {len(gt_d.get('walls', []))}")
-                        st.write(f"- Doors: {len(gt_d.get('doors', []))}")
-                        st.write(f"- Windows: {len(gt_d.get('windows', []))}")
-                        st.write(f"- Rooms: {len(gt_d.get('rooms', []))}")
-                        st.json(gt_d)
+def page_dataset() -> None:
+    st.subheader("Dataset explorer")
+    manifest = Path("dataset/processed/DATASET_MANIFEST.json")
+    if not manifest.exists():
+        st.warning("No verified dataset manifest found: the contents of dataset/ are unverified "
+                   "and must not be treated as CubiCasa5K.")
+        return
+    st.json(json.loads(manifest.read_text(encoding="utf-8")))
 
-    # Mode 4: Architecture
-    elif app_mode == "System Architecture":
-        st.subheader("FloorPlan-AI System Architecture")
-        st.markdown("""
-```
-Floor Plan Image (PNG/JPG)
-       │
-       ▼
-[Image Preprocessing & Resolution Normalization]
-  • Contrast enhancement (CLAHE)
-  • Aspect ratio preservation
-       │
-       ▼
-[Fine-Tuned Vision-Language Model]
-  • Base: Qwen2.5-VL-3B-Instruct
-  • LoRA: r=16, alpha=32, target_modules=[q, k, v, o, gate, up, down]
-       │
-       ▼
-[Architectural Element Identification]
-  • Multimodal conversational prompting
-  • Next-token autoregressive generation
-       │
-       ▼
-[Geometric Postprocessing Engine]
-  • Orthogonal wall angle snapping
-  • Topology validation (Shapely)
-  • Non-Maximum Suppression (IoU) duplicate suppression
-  • Door / Window centerline wall alignment
-       │
-       ▼
-[Pydantic JSON Validation]
-  • Boundary enforcement
-  • Unique ID assignment
-       │
-       ▼
-Structured Floor Plan JSON (CAD/BIM Ready)
-```
-        """)
+
+def main() -> None:
+    st.title("📐 FloorPlan-AI")
+    st.markdown("Qwen2.5-VL-3B-Instruct + LoRA for walls, doors, windows and rooms from 2D floor plans. "
+                "Adapter status and the origin of every result are shown explicitly.")
+
+    mode = st.sidebar.radio("Page", ["Detector", "Evaluation", "Dataset"])
+    ok, info = adapter_status()
+    st.sidebar.subheader("Adapter status")
+    if ok:
+        st.sidebar.success(f"LoRA adapter files verified: r={info['r']}, {info['n_lora_params']:,} params, "
+                           f"sha256 {info['weights_sha256'][:12]}…")
+        st.sidebar.caption("Verified on disk. This app does not load the model by itself.")
+    else:
+        st.sidebar.error("No verified LoRA adapter")
+        with st.sidebar.expander("Reason"):
+            st.write(info)
+    st.sidebar.caption(f"Base model: {DEFAULT_BASE_MODEL}")
+
+    {"Detector": lambda: page_detector(ok), "Evaluation": page_evaluation, "Dataset": page_dataset}[mode]()
 
 
 if __name__ == "__main__":
