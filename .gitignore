@@ -41,3 +41,10 @@ Thumbs.db
 # Dashboard scratch uploads
 outputs/predictions/_upload.png
 samples/temp_input.png
+
+# U-Net / ResNet-18 segmentation experiment (config/segmentation.yaml)
+# Prepared data, run directories and weights stay OUT of Git; small result files under results/segmentation/ may be committed.
+data/seg/
+runs/
+*.zip
+outputs/segmentation_predictions/

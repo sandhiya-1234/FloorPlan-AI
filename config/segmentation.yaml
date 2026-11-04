@@ -1,0 +1,170 @@
+# =============================================================================
+# FloorPlan-AI: learned segmentation experiment (U-Net, ResNet-18 encoder) on CubiCasa5K.
+# Single source of truth for the class mapping, subset sizes and hyper-parameters.
+#
+# STATUS: none of these values has been tuned or validated on real data yet. The class mapping below
+# is derived from the OFFICIAL CubiCasa5k loader code (floortrans/loaders/house.py, svg_utils.py), not
+# from inspecting real SVG files (the sandbox that wrote this could not download the dataset).
+# `python -m training.prepare_dataset inspect` re-checks every selector against the real files first.
+# =============================================================================
+
+experiment:
+  name: unet_resnet18_cubicasa_subset
+  seed: 42
+
+source:
+  dataset: CubiCasa5K
+  zenodo_record: 2613548
+  zenodo_doi: 10.5281/zenodo.2613548
+  # Verified on the Zenodo record page (Version 1.0, published 2019-03-28): ONE file, 5.5 GB.
+  zenodo_file: cubicasa5k.zip
+  zenodo_md5: 0ce0b203d1e3c125b51087b219bd23b9
+  official_repo: https://github.com/CubiCasa/CubiCasa5k
+  # Two licence statements disagree: the Zenodo record says "Creative Commons Attribution Non Commercial
+  # Share Alike 4.0 International"; the official repository LICENSE file says CC BY-NC 4.0. We follow the
+  # stricter reading: non-commercial, attribution, share-alike. Cite Kalervo et al., SCIA 2019.
+  licence_note: "CC BY-NC-SA 4.0 (Zenodo record); repo LICENSE says CC BY-NC 4.0; treat as non-commercial + share-alike"
+  split_files: [train.txt, val.txt, test.txt]   # official split lists, expected inside the zip (checked by `inspect`)
+  image_file: F1_scaled.png                      # the official loader pairs model.svg with THIS image
+  svg_file: model.svg
+
+# Target classes. Pixel value in the saved masks. 255 = ignored in loss and metrics.
+classes:
+  - Background   # 0
+  - Room         # 1
+  - Wall         # 2
+  - Door         # 3
+  - Window       # 4
+ignore_index: 255
+
+# ---- source category -> target class ---------------------------------------------------------------
+# Selectors copied from the official parser (house.py, class House.__init__):
+#   walls    <g id="Wall">            doors   <g id="Door">          windows <g id="Window">
+#   rooms    <g class="Space <Name>"> (name = 2nd token of the class attribute)
+#   railings <g id="Railing">
+# Geometry of every group = its first DIRECT <polygon> child, attribute points="x,y x,y ... ".
+# Coordinates are pixels of F1_scaled.png.
+mapping:
+  selectors:
+    wall:    {attr: id,    value: Wall}
+    door:    {attr: id,    value: Door}
+    window:  {attr: id,    value: Window}
+    railing: {attr: id,    value: Railing}
+    space:   {attr: class, first_token: Space, name_token_index: 1}
+  # Every room name the official loader lists in `rooms_selected` (59 names), each mapped explicitly.
+  # A Space whose name is not listed here or in ignore_room_names is NOT guessed: the sample is skipped
+  # and counted in the manifest under "unmapped_room_names".
+  room_names:
+    Alcove: Room
+    Attic: Room
+    Ballroom: Room
+    Bar: Room
+    Basement: Room
+    Bath: Room
+    Bedroom: Room
+    CarPort: Room
+    Church: Room
+    Closet: Room
+    ConferenceRoom: Room
+    Conservatory: Room
+    Counter: Room
+    Den: Room
+    Dining: Room
+    DraughtLobby: Room
+    DressingRoom: Room
+    EatingArea: Room
+    Elevated: Room
+    Elevator: Room
+    Entry: Room
+    ExerciseRoom: Room
+    Garage: Room
+    Garbage: Room
+    Hall: Room
+    HallWay: Room
+    HotTub: Room
+    Kitchen: Room
+    Library: Room
+    LivingRoom: Room
+    Loft: Room
+    Lounge: Room
+    MediaRoom: Room
+    MeetingRoom: Room
+    Museum: Room
+    Nook: Room
+    Office: Room
+    OpenToBelow: Room
+    Pantry: Room
+    Reception: Room
+    RecreationRoom: Room
+    RetailSpace: Room
+    Room: Room
+    Sanctuary: Room
+    Sauna: Room
+    ServiceRoom: Room
+    ServingArea: Room
+    Skylights: Room
+    Stable: Room
+    Stage: Room
+    StairWell: Room
+    Storage: Room
+    SunRoom: Room
+    SwimmingPool: Room
+    TechnicalRoom: Room
+    Theatre: Room
+    Undefined: Room
+    UserDefined: Room
+    Utility: Room
+  # Deliberately excluded from "Room": painted with the ignore label (not trained on, not scored).
+  ignore_room_names:
+    - Outdoor     # outdoor space: not an indoor room
+    - Below150cm  # in the official name list but absent from its selected set; semantics unclear
+  ignore_groups:
+    - Railing     # official loader treats it as its own category; not a wall for this task
+  # Everything else in the SVG (furniture icons, stairs, text, ...) is not painted: those pixels keep
+  # the label of what is under them (usually Room) or Background.
+  # Painting order, later overwrites earlier. Priority resolves overlaps deterministically:
+  paint_order: [outdoor_ignore, rooms, railing_ignore_on_empty, walls, windows, doors]
+  min_wall_extent_px: 4   # official loader drops wall polygons smaller than 4 px in either direction
+
+# ---- subset (small, seeded, drawn from the OFFICIAL split lists) -----------------------------------
+subset:
+  n_train: 1000
+  n_val: 150
+  n_test: 200
+  seed: 42
+  # Cross-split duplicate control (train copies are dropped; val/test keep the official boundaries)
+  dhash_max_hamming: 3
+
+image:
+  size: 512          # letterboxed square canvas; aspect ratio preserved, padding labelled ignore
+
+paths:
+  data_dir: data/seg
+  runs_dir: runs/seg
+  results_dir: results/segmentation
+
+model:
+  encoder: resnet18
+  pretrained_encoder: true      # ImageNet weights from torchvision; fine-tuned end to end
+  n_classes: 5
+
+train:
+  epochs: 25
+  batch_size: 4
+  lr: 0.0003
+  weight_decay: 0.0001
+  num_workers: 2
+  amp: true                     # fp16 autocast on CUDA (T4); disabled automatically on CPU
+  loss:
+    ce_weight: 1.0
+    dice_weight: 1.0
+    ce_class_weights: sqrt_inv_freq   # none | sqrt_inv_freq (from train-mask pixel counts, mean-normalised, max 5)
+  augment:
+    flips: true
+    rot90: true
+  select_best_by: val_mean_iou   # mean IoU over the 5 classes on the validation split
+
+inference:
+  # mask -> polygons. All geometry comes from the predicted mask; no confidence values are produced.
+  min_area_frac: 0.0002          # drop connected components smaller than this fraction of the image
+  simplify_epsilon_frac: 0.002   # Douglas-Peucker epsilon as a fraction of the contour perimeter
