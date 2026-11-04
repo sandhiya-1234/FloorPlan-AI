@@ -1,284 +1,387 @@
 """
-PowerPoint Presentation Generator for FloorPlan-AI Assessment.
+PowerPoint generator for the FloorPlan-AI assessment (white background, python-pptx).
 
-Generates a clean, professional, academic-style presentation using python-pptx:
-- 14 distinct slides adhering strictly to assessment requirements
-- Minimalist typography (Dark Slate text on crisp White background with Blue accent)
-- Every number on the results slide is read from outputs/evaluation/summary.json;
-  nothing is hard-coded. With no such file the slide says that no verified results exist.
+Integrity rule: every training or evaluation number on the slides is READ from saved result files; nothing is typed in.
+  results/segmentation/summary.json          evaluation on the held-out test split (written by evaluation/evaluate_segmentation.py)
+  results/segmentation/train_summary.json    training summary copied next to the results
+  results/segmentation/history.json          per-epoch training history
+  results/segmentation/per_image.csv         per-image scores (used to pick the example panels)
+  results/segmentation/visuals/*.png         ground-truth vs prediction panels
+When those files do not exist, the slides say that the model has not been trained / evaluated. Regenerate after a real run:
+    python presentation/generate_presentation.py
 """
 
-import os
-import sys
+from __future__ import annotations
+
+import csv
+import json
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Sequence
+
+import yaml
 from pptx import Presentation
-from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
-from pptx.enum.text import PP_ALIGN
-from pptx.enum.shapes import MSO_SHAPE
+from pptx.util import Inches, Pt
 
-# Styling Constants
-COLOR_BG = RGBColor(255, 255, 255)
-COLOR_TEXT_DARK = RGBColor(15, 23, 42)       # #0F172A Dark Slate
-COLOR_TEXT_MUTED = RGBColor(71, 85, 105)     # #475569 Slate
-COLOR_ACCENT_BLUE = RGBColor(37, 99, 235)    # #2563EB Primary Blue
-COLOR_ACCENT_BG = RGBColor(241, 245, 249)    # #F1F5F9 Soft Grey/Blue
+ROOT = Path(__file__).resolve().parent.parent
+RES = ROOT / "results" / "segmentation"
+CFG = yaml.safe_load((ROOT / "config" / "segmentation.yaml").read_text(encoding="utf-8"))
 
-
-def create_blank_slide(prs):
-    """Creates a clean blank slide with white background."""
-    blank_layout = prs.slide_layouts[6]
-    slide = prs.slides.add_slide(blank_layout)
-    bg = slide.background
-    fill = bg.fill
-    fill.solid()
-    fill.fore_color.rgb = COLOR_BG
-    return slide
+WHITE = RGBColor(255, 255, 255)
+DARK = RGBColor(15, 23, 42)
+MUTED = RGBColor(71, 85, 105)
+BLUE = RGBColor(37, 99, 235)
+SOFT = RGBColor(241, 245, 249)
+RED = RGBColor(185, 28, 28)
+GREEN = RGBColor(21, 128, 61)
 
 
-def add_slide_header(slide, title_text: str, category_text: str = "TECHNICAL ASSESSMENT: FLOORPLAN-AI"):
-    """Adds standardized academic header to slide."""
-    header_box = slide.shapes.add_textbox(Inches(0.8), Inches(0.5), Inches(11.5), Inches(1.1))
-    tf = header_box.text_frame
+def _json(path: Path) -> Optional[Dict[str, Any]]:
+    return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
+
+
+TRAIN = _json(RES / "train_summary.json")
+EVAL = _json(RES / "summary.json")
+HIST = _json(RES / "history.json")
+EVALUATED = bool(EVAL and EVAL.get("held_out") and EVAL.get("split") == "test")
+TRAINED = bool(TRAIN)
+
+
+# ------------------------------------------------------------------------------------------ helpers
+
+def new_slide(prs: Presentation):
+    s = prs.slides.add_slide(prs.slide_layouts[6])
+    s.background.fill.solid()
+    s.background.fill.fore_color.rgb = WHITE
+    return s
+
+
+def header(slide, title: str, kicker: str = "FLOORPLAN-AI: U-NET / RESNET-18 SEGMENTATION") -> None:
+    box = slide.shapes.add_textbox(Inches(0.7), Inches(0.4), Inches(12.0), Inches(1.0))
+    tf = box.text_frame
     tf.word_wrap = True
-    tf.margin_left = tf.margin_top = tf.margin_right = tf.margin_bottom = 0
-
-    p_cat = tf.paragraphs[0]
-    p_cat.text = category_text.upper()
-    p_cat.font.size = Pt(10)
-    p_cat.font.bold = True
-    p_cat.font.color.rgb = COLOR_ACCENT_BLUE
-
-    p_title = tf.add_paragraph()
-    p_title.text = title_text
-    p_title.font.size = Pt(22)
-    p_title.font.bold = True
-    p_title.font.color.rgb = COLOR_TEXT_DARK
-    p_title.space_before = Pt(4)
+    tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = 0
+    p = tf.paragraphs[0]
+    p.text = kicker
+    p.font.size, p.font.bold, p.font.color.rgb = Pt(10), True, BLUE
+    t = tf.add_paragraph()
+    t.text = title
+    t.font.size, t.font.bold, t.font.color.rgb = Pt(24), True, DARK
+    t.space_before = Pt(3)
 
 
-def add_bullet_points(slide, points, left=Inches(0.8), top=Inches(1.8), width=Inches(11.5), height=Inches(5.0)):
-    """Renders structured bullet points with clean spacing."""
-    tx_box = slide.shapes.add_textbox(left, top, width, height)
-    tf = tx_box.text_frame
+def bullets(slide, items: Sequence[str], top: float = 1.6, left: float = 0.7, width: float = 12.0, height: float = 5.4,
+            size: int = 15, color: RGBColor = DARK) -> None:
+    box = slide.shapes.add_textbox(Inches(left), Inches(top), Inches(width), Inches(height))
+    tf = box.text_frame
     tf.word_wrap = True
-    tf.margin_left = tf.margin_top = tf.margin_right = tf.margin_bottom = 0
-
-    for idx, pt in enumerate(points):
-        p = tf.paragraphs[0] if idx == 0 else tf.add_paragraph()
-        p.text = pt
-        p.font.size = Pt(14)
-        p.font.color.rgb = COLOR_TEXT_DARK
-        p.space_after = Pt(12)
-        p.level = 0
+    tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = 0
+    for i, it in enumerate(items):
+        p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+        p.text = it
+        p.font.size, p.font.color.rgb = Pt(size), color
+        p.space_after = Pt(9)
 
 
-def build_presentation():
+def table(slide, cols: Sequence[str], rows: Sequence[Sequence[str]], top: float = 1.6, left: float = 0.7, width: float = 12.0,
+          col_w: Optional[Sequence[float]] = None, size: int = 12, row_h: float = 0.42) -> float:
+    """White table with a blue header row; returns the bottom edge (inches)."""
+    shape = slide.shapes.add_table(len(rows) + 1, len(cols), Inches(left), Inches(top), Inches(width), Inches(row_h * (len(rows) + 1)))
+    tbl = shape.table
+    if col_w:
+        for j, w in enumerate(col_w):
+            tbl.columns[j].width = Inches(w)
+    for j, c in enumerate(cols):
+        cell = tbl.cell(0, j)
+        cell.text = c
+        cell.fill.solid(); cell.fill.fore_color.rgb = BLUE
+        for p in cell.text_frame.paragraphs:
+            p.font.size, p.font.bold, p.font.color.rgb = Pt(size), True, WHITE
+    for i, r in enumerate(rows, 1):
+        for j, v in enumerate(r):
+            cell = tbl.cell(i, j)
+            cell.text = str(v)
+            cell.fill.solid(); cell.fill.fore_color.rgb = WHITE if i % 2 else SOFT
+            for p in cell.text_frame.paragraphs:
+                p.font.size, p.font.color.rgb = Pt(size), DARK
+    return top + row_h * (len(rows) + 1)
+
+
+def note(slide, text: str, top: float, color: RGBColor = MUTED, size: int = 12, height: float = 1.2) -> None:
+    bullets(slide, [text], top=top, size=size, color=color, height=height)
+
+
+def f3(v: Optional[float]) -> str:
+    return "n/a" if v is None else f"{v:.3f}"
+
+
+# --------------------------------------------------------------------------------------------- deck
+
+def build() -> Path:
     prs = Presentation()
-    prs.slide_width = Inches(13.333)
-    prs.slide_height = Inches(7.5)
+    prs.slide_width, prs.slide_height = Inches(13.333), Inches(7.5)
+    names: List[str] = CFG["classes"]
+    tc, mc = CFG["train"], CFG["model"]
 
-    # ----------------------------------------------------
-    # Slide 1: Title
-    # ----------------------------------------------------
-    s1 = create_blank_slide(prs)
-    t_box = s1.shapes.add_textbox(Inches(1.0), Inches(2.2), Inches(11.3), Inches(3.0))
-    tf = t_box.text_frame
+    # 1 Title ----------------------------------------------------------------------------------------
+    s = new_slide(prs)
+    box = s.shapes.add_textbox(Inches(1.0), Inches(2.0), Inches(11.3), Inches(3.6))
+    tf = box.text_frame
     tf.word_wrap = True
+    p = tf.paragraphs[0]
+    p.text = "Floor-plan understanding with a fine-tuned U-Net"
+    p.font.size, p.font.bold, p.font.color.rgb = Pt(34), True, BLUE
+    for txt, sz, col, before in [
+        ("Walls, doors, windows and rooms from 2D floor plans, as structured JSON for 2D-to-3D processing", 18, DARK, 10),
+        ("Pretrained ResNet-18 encoder + U-Net decoder, fine-tuned on real CubiCasa5K plans (Colab T4)", 15, MUTED, 8),
+        (("Status: trained and evaluated on held-out test plans; every number comes from saved result files" if (TRAINED and EVALUATED)
+          else "Status: code written and unit-tested; NOT trained and NOT evaluated yet. No result numbers appear in this deck."),
+         14, GREEN if (TRAINED and EVALUATED) else RED, 26),
+    ]:
+        q = tf.add_paragraph()
+        q.text = txt
+        q.font.size, q.font.color.rgb = Pt(sz), col
+        q.space_before = Pt(before)
 
-    p0 = tf.paragraphs[0]
-    p0.text = "AI-POWERED 2D FLOOR PLAN DETECTION"
-    p0.font.size = Pt(32)
-    p0.font.bold = True
-    p0.font.color.rgb = COLOR_ACCENT_BLUE
-
-    p1 = tf.add_paragraph()
-    p1.text = "Goal: fine-tune Qwen2.5-VL-3B-Instruct with LoRA to parse floor plans into structured JSON"
-    p1.font.size = Pt(18)
-    p1.font.color.rgb = COLOR_TEXT_DARK
-    p1.space_before = Pt(10)
-
-    p2 = tf.add_paragraph()
-    p2.text = "Technical assessment | Status: no model has been trained yet; the results slide states what has actually been measured"
-    p2.font.size = Pt(13)
-    p2.font.color.rgb = COLOR_TEXT_MUTED
-    p2.space_before = Pt(24)
-
-    # ----------------------------------------------------
-    # Slide 2: Problem Statement
-    # ----------------------------------------------------
-    s2 = create_blank_slide(prs)
-    add_slide_header(s2, "Problem Statement: Converting Raster Floor Plans into Structured CAD")
-    add_bullet_points(s2, [
-        "Architectural floor plans are predominantly stored as static raster images (PNG/JPG) or scanned blueprints.",
-        "Downstream 3D building generation and BIM workflows require precise geometric primitives: wall centerlines, door/window openings, and closed room polygons.",
-        "Core Technical Challenges:\n  • Discontinuous wall segments and varied drafting styles across blueprints\n  • Scale and rotation variance in door swing symbols and architectural window annotations\n  • Semantic ambiguity between room spaces (e.g. living room vs. dining room boundaries)\n  • Strict requirement for syntactically and geometrically valid structured JSON outputs.",
-        "Objective: Formulate an AI detection system that extracts exact spatial coordinates, element classifications, and topologically sound geometries suitable for direct 2D-to-3D CAD reconstruction."
+    # 2 Task -----------------------------------------------------------------------------------------
+    s = new_slide(prs)
+    header(s, "Task: from a raster floor plan to structured geometry")
+    bullets(s, [
+        "Input: a 2D floor-plan image (PNG/JPG).",
+        "Output: JSON with rooms, walls, doors and windows, each with an id, a type and polygon coordinates in the original image's pixel space.",
+        "Why it matters: 2D-to-3D and BIM workflows need explicit geometry, not pixels.",
+        "Assessment requirement: genuinely fine-tune a pretrained model on this task and evaluate it on unseen plans.",
+        "Integrity rules followed here: no fabricated metrics, weights, logs or predictions; no heuristics presented as AI; no synthetic data presented as real; no invented confidence values.",
     ])
 
-    # ----------------------------------------------------
-    # Slide 3: Project Objectives
-    # ----------------------------------------------------
-    s3 = create_blank_slide(prs)
-    add_slide_header(s3, "Project Objectives & Key Engineering Deliverables")
-    add_bullet_points(s3, [
-        "1. Vision-Language Fine-Tuning: Adapt a pretrained multimodal VLM (Qwen2.5-VL-3B-Instruct) using parameter-efficient LoRA/QLoRA on architectural datasets.",
-        "2. Ground-Truth Data Pipeline: Build an automated ingestion engine for CubiCasa5K vector SVG annotations, converting spaces and structural lines into normalized coordinates.",
-        "3. Strict Pydantic Schema: Enforce coordinate boundary checks, unique entity identifiers, non-zero wall lengths, and polygon closure.",
-        "4. Geometric Postprocessing Engine: Formulate algorithmic refinement for orthogonal wall angle snapping, polygon topology validation (Shapely), and door/window wall attachment.",
-        "5. Rigorous Empirical Evaluation: Benchmark fine-tuned performance against zero-shot base models on an unseen held-out test split, reporting precision, recall, F1, and IoU.",
-        "6. Interactive Application: Provide an intuitive Streamlit dashboard for real-time inference and JSON export."
+    # 3 Status table (dynamic) -----------------------------------------------------------------------
+    s = new_slide(prs)
+    header(s, "Status at a glance: implemented vs actually run")
+    manifest = (RES / "manifest_subset.json").is_file()
+    rows = [
+        ["Dataset: official CubiCasa5K subset, mask mapping", "Yes (prepare_dataset.py)",
+         "Yes: subset used by the saved results" if manifest else "NO: not run on real data in the authoring sandbox",
+         "Real SVG inspection and overlay check by a person" if not manifest else "see docs/dataset.md"],
+        ["Fine-tuning U-Net + ResNet-18", "Yes (train_segmentation.py)",
+         f"Yes: best epoch {TRAIN['best_epoch']}, {TRAIN['optimizer_steps']} optimiser steps" if TRAINED else "NO: not trained",
+         "-" if TRAINED else "Colab run (Stage B)"],
+        ["Inference: checkpoint to mask to polygon JSON", "Yes (predict_segmentation.py)",
+         "Run on test images" if EVALUATED else "Unit-tested only; no model run", "-" if EVALUATED else "Needs a trained checkpoint"],
+        ["Evaluation on held-out test plans", "Yes (evaluate_segmentation.py)",
+         f"Yes: {EVAL['n_test_images']} test plans" if EVALUATED else "NO: not evaluated", "-" if EVALUATED else "Needs a trained checkpoint"],
+        ["Weights outside Git, download link", "Policy in place", "Weights exist" if TRAINED else "No weights exist", "Upload + sha256" ],
+        ["OpenCV baseline (not AI)", "Yes, kept separate", "Runs; no benchmark on real plans", "Not part of the learned result"],
+        ["Qwen2.5-VL LoRA (original plan)", "Early draft only", "NEVER executed", "Abandoned for this submission"],
+    ]
+    table(s, ["Component", "Implemented", "Actually run", "Not completed"], rows, col_w=[3.6, 2.6, 3.4, 2.4], size=11, row_h=0.62)
+
+    # 4 Model choice ---------------------------------------------------------------------------------
+    s = new_slide(prs)
+    header(s, "Model choice: why a U-Net with a pretrained ResNet-18 encoder")
+    bullets(s, [
+        "Dense, exact supervision: CubiCasa5K polygons rasterise to per-pixel masks; a VLM would have to emit hundreds of coordinates as text.",
+        "Measurable: per-class IoU, Dice/F1, precision, recall and a confusion matrix; no model-side JSON parsing failures.",
+        "Fits the hardware and deadline: a small CNN trains on one Colab T4; a 3B VLM with 4-bit LoRA at high resolution is slow, and its draft trainer had never been run.",
+        "No invented entities: polygons are extracted from predicted pixels, so every vertex has pixels behind it.",
+        "Costs: instances that touch merge; walls are regions, not centre-lines; one Room class (no room types); no confidence scores.",
+        "Pretrained part: ResNet-18 with ImageNet weights, fine-tuned end to end. The decoder starts from random weights.",
     ])
 
-    # ----------------------------------------------------
-    # Slide 4: Proposed System Architecture
-    # ----------------------------------------------------
-    s4 = create_blank_slide(prs)
-    add_slide_header(s4, "Planned System Architecture: End-to-End Multimodal Pipeline (design, see README for implementation status)")
-    add_bullet_points(s4, [
-        "1. Image Ingestion & Preprocessing:\n   • Aspect-ratio-preserving letterbox onto a 1008x1008 canvas (coordinates mapped back to the original image)",
-        "2. Multimodal VLM Representation:\n   • Dynamic resolution Vision Transformer (ViT) patch extraction without spatial distortion\n   • Conversational instruction prompt guiding structured architectural decomposition",
-        "3. Parameter-Efficient LoRA Adapter:\n   • Low-rank matrices (r=16, alpha=32) attached to query, key, value, and MLP projection layers\n   • Masked target loss computing cross-entropy strictly on assistant JSON tokens",
-        "4. Geometric Postprocessing & JSON Sanitization:\n   • Non-Maximum Suppression (IoU >= 0.75) for duplicate entity elimination\n   • Orthogonal snapping aligning near-perpendicular walls to exact CAD axes\n   • Pydantic schema validation ensuring watertight geometric integrity."
+    # 5 Dataset provenance ---------------------------------------------------------------------------
+    s = new_slide(prs)
+    header(s, "Dataset: official CubiCasa5K")
+    src = CFG["source"]
+    bullets(s, [
+        f"Source: Zenodo record {src['zenodo_record']} (DOI {src['zenodo_doi']}), file {src['zenodo_file']}, 5.5 GB, md5 {src['zenodo_md5']}.",
+        "5,000 annotated floor plans with SVG vector annotations (Kalervo et al., SCIA 2019). Official train / val / test lists are used as they are.",
+        "Licence: CC BY-NC-SA 4.0 on Zenodo; the official repository says CC BY-NC 4.0. The stricter reading is followed: non-commercial, share-alike, and so are trained weights.",
+        f"Subset: {CFG['subset']['n_train']} / {CFG['subset']['n_val']} / {CFG['subset']['n_test']} plans (train / val / test) drawn with seed {CFG['subset']['seed']} from the official lists. The 105 GB LMDB is not built.",
+        "Checked so far: record metadata only. The real SVG structure and the image/mask overlays are checked in Colab before any training (a manual gate).",
     ])
 
-    # ----------------------------------------------------
-    # Slide 5: Selected Pretrained Model
-    # ----------------------------------------------------
-    s5 = create_blank_slide(prs)
-    add_slide_header(s5, "Selected Pretrained Model: Qwen2.5-VL-3B-Instruct")
-    add_bullet_points(s5, [
-        "Model Selection Justification:\n  • Native dynamic resolution Vision Transformer avoids pixel distortion on non-square floor plans.\n  • Multimodal 3D-RoPE positional embeddings provide strong spatial-coordinate grounding.\n  • 3B parameters fit LoRA/QLoRA fine-tuning on a free Colab T4.",
-        "Architectural Capabilities:\n  • Instruction-following chat model with image input and absolute-coordinate grounding (per the model card); how well it parses floor plans is what the evaluation measures.",
-        "Compute & Memory Profile:\n  • Full FP16: ~7 GB weights (~14-16 GB training VRAM).\n  • 4-Bit QLoRA: ~2.2 GB VRAM for model weights, which is what makes parameter-efficient fine-tuning feasible on a Colab T4 (not full fine-tuning)."
+    # 6 Mapping -------------------------------------------------------------------------------------
+    s = new_slide(prs)
+    header(s, "Explicit source-to-target class mapping (config/segmentation.yaml)")
+    table(s, ["Source in model.svg", "Target class", "Rule"], [
+        ["<g id=\"Wall\"> polygon", "Wall (2)", "walls under 4 px extent dropped, as in the official loader"],
+        ["<g id=\"Door\"> polygon", "Door (3)", "painted over walls"],
+        ["<g id=\"Window\"> polygon", "Window (4)", "painted over walls"],
+        ["<g class=\"Space <Name>\">, all 59 official names", "Room (1)", "every name listed explicitly"],
+        ["Space Outdoor, Space Below150cm, Railing", "ignored (255)", "excluded from loss and metrics"],
+        ["Space name not in the config", "sample rejected", "counted in manifest.json; never guessed"],
+        ["everything else", "Background (0)", ""],
+    ], col_w=[4.6, 2.2, 5.2], size=12)
+    note(s, "Paint order: " + ", ".join(CFG["mapping"]["paint_order"]) + ". The mapping was written from the official loader code; the Colab 'inspect' step and a person's overlay check confirm it on the real files.", top=5.3)
+
+    # 7 Splits & preprocessing ------------------------------------------------------------------------
+    s = new_slide(prs)
+    header(s, "Splits, duplicate control and preprocessing")
+    bullets(s, [
+        "Splits: the official lists; nothing is re-split. Test is processed first, then val, then train.",
+        f"Duplicates: a val or train candidate is dropped when it matches an earlier split by image sha256, mask hash or perceptual dHash (Hamming <= {CFG['subset']['dhash_max_hamming']}). Every drop is listed in manifest.json.",
+        "Leakage guards: id and hash sets must be disjoint; evaluation aborts if a test id was used in training or validation.",
+        f"Preprocessing: letterbox to {CFG['image']['size']}x{CFG['image']['size']} (aspect kept; padding white in the image and 255 in the mask), ImageNet normalisation; flips and 90-degree rotations during training.",
+        "Limit: hashes catch re-exports of one plan, not two different files of the same building.",
     ])
 
-    # ----------------------------------------------------
-    # Slide 6: Dataset and Annotation Format
-    # ----------------------------------------------------
-    s6 = create_blank_slide(prs)
-    add_slide_header(s6, "Dataset: CubiCasa5K (target) and current status")
-    add_bullet_points(s6, [
-        "Dataset Overview:\n  • Target source: CubiCasa5K (5,000 floor plans, CC BY-NC-SA 4.0, vector SVG annotations).\n  • Status: real data not yet ingested. An earlier set of 15 synthetic fixtures was found to be unusable (identical images, mismatched labels) and has been discarded; see docs/audit/.",
-        "Category Extraction & Mapping:\n  • Walls: SVG <line> and <polyline> elements mapped to [start_x, start_y] -> [end_x, end_y] segments.\n  • Doors: Single and double door symbols mapped to bounding boxes, positions, and orientations.\n  • Windows: Perimeter opening symbols mapped to bounding boxes and midpoints.\n  • Rooms: Dense <polygon> space elements mapped to room types (Bedroom, Bathroom, Kitchen, Living Room, etc.).",
-        "Leakage Prevention:\n  • Splits are by floor-plan ID, then checked for exact-duplicate images, perceptual near-duplicates and annotation similarity across splits."
-    ])
+    # 8 Training configuration -----------------------------------------------------------------------
+    s = new_slide(prs)
+    header(s, "Training configuration (from config/segmentation.yaml)")
+    table(s, ["Item", "Value"], [
+        ["Architecture", f"{mc['encoder']} encoder (ImageNet weights, fine-tuned) + 4-stage U-Net decoder, {mc['n_classes']} classes"],
+        ["Input", f"{CFG['image']['size']}x{CFG['image']['size']} letterboxed"],
+        ["Loss", f"cross-entropy ({tc['loss']['ce_class_weights']} class weights) + soft Dice; ignore label {CFG['ignore_index']}"],
+        ["Optimiser", f"AdamW, lr {tc['lr']}, weight decay {tc['weight_decay']}, warmup + cosine decay, grad clip 5.0"],
+        ["Batch / epochs", f"batch size {tc['batch_size']}, {tc['epochs']} epochs"],
+        ["Precision", "fp16 autocast + gradient scaling on CUDA (T4 has no bf16)"],
+        ["Model selection", f"best validation {tc['select_best_by']}; checkpoint + history.json + config.json saved"],
+        ["Seed", str(CFG["experiment"]["seed"])],
+    ], col_w=[2.8, 9.2], size=12)
+    note(s, "These are untuned defaults. Gates: no training without manifest.json and a human overlay confirmation; --overfit runs are labelled and refused by evaluation.", top=5.6)
 
-    # ----------------------------------------------------
-    # Slide 7: Image Preprocessing
-    # ----------------------------------------------------
-    s7 = create_blank_slide(prs)
-    add_slide_header(s7, "Image Preprocessing & Coordinate Transformation")
-    add_bullet_points(s7, [
-        "1. Color & Resolution Normalization:\n   • Letterbox: one uniform scale (long side to 1008 px) plus white padding; no distortion.\n   • Scale and padding offsets are stored so predictions map back to original-image coordinates.",
-        "2. Contrast & Edge Enhancement:\n   • None applied in the current pipeline (CLAHE was considered but is not implemented or evaluated).",
-        "3. Coordinate Mapping Integrity:\n   • All ground-truth annotations are scaled synchronously with the raster canvas.\n   • Aspect ratio is preserved (letterbox), so room angles are not warped."
-    ])
-
-    # ----------------------------------------------------
-    # Slide 8: Fine-Tuning Approach
-    # ----------------------------------------------------
-    s8 = create_blank_slide(prs)
-    add_slide_header(s8, "Fine-Tuning Approach (planned design; trainer written but never executed)")
-    add_bullet_points(s8, [
-        "1. Conversational Template:\n   • User: <image> + 'Analyze this 2D architectural floor plan image and detect all architectural elements...'\n   • Assistant: Compact serialized JSON matching FloorPlanSchema.",
-        "2. Label Masking Strategy:\n   • All image tokens and user instruction prompt tokens are masked with label = -100.\n   • Model gradients are computed exclusively on target JSON architectural syntax and coordinates.",
-        "3. Loss Formulation:\n   • Standard autoregressive token Cross-Entropy loss over the discrete coordinate and classification vocabulary.",
-        "4. Validation & Checkpointing:\n   • Checkpoints saved per epoch; best adapter checkpoint retained based on minimum validation loss."
-    ])
-
-    # ----------------------------------------------------
-    # Slide 9: LoRA/QLoRA Hyperparameters
-    # ----------------------------------------------------
-    s9 = create_blank_slide(prs)
-    add_slide_header(s9, "LoRA / QLoRA Hyperparameter Configuration (planned; not yet executed)")
-    add_bullet_points(s9, [
-        "Fine-Tuning Hyperparameters:\n  • LoRA Rank (r): 16\n  • LoRA Alpha: 32 (Scaling ratio = 2.0)\n  • LoRA Dropout: 0.05\n  • Target Modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]\n  • Trainable parameters: measured and logged at training time (not assumed).",
-        "Optimization Parameters:\n  • Optimizer: AdamW (weight_decay = 0.01)\n  • Learning Rate: 2e-4 (warmup_ratio 0.03 configured; scheduler not yet wired into the trainer)\n  • Epochs: 3 | Batch Size: 1 per device | Gradient Accumulation Steps: 8\n  • Precision: FP16 mixed precision on T4 (no BF16) with gradient checkpointing."
-    ])
-
-    # ----------------------------------------------------
-    # Slide 10: JSON Output Structure
-    # ----------------------------------------------------
-    s10 = create_blank_slide(prs)
-    add_slide_header(s10, "Standardized JSON Schema (Pydantic Validated)")
-    add_bullet_points(s10, [
-        "JSON Specification Attributes:\n  • image, image_width, image_height, units ('pixels')\n  • rooms: id, type (e.g. 'bedroom'), polygon [[x1, y1], ...], area_pixels, confidence\n  • walls: id, start [x, y], end [x, y], thickness, confidence\n  • doors: id, bbox [xmin, ymin, xmax, ymax], position [x, y], orientation, confidence\n  • windows: id, bbox [xmin, ymin, xmax, ymax], position [x, y], orientation, confidence",
-        "Automated Quality Constraints:\n  • In-bounds coordinate clamping: 0 <= coord <= image_dimension\n  • Closed non-degenerate polygons with automated Shoelace formula area calculation\n  • Non-zero wall segment lengths and unique identifier guarantees."
-    ])
-
-    # ----------------------------------------------------
-    # Slide 11: Evaluation Metrics
-    # ----------------------------------------------------
-    s11 = create_blank_slide(prs)
-    add_slide_header(s11, "Evaluation Methodology: Multi-Faceted Metric Suite")
-    add_bullet_points(s11, [
-        "1. Architectural Object Detection Metrics:\n   • Precision, Recall, and F1-Score calculated via Hungarian (optimal) bipartite matching.\n   • True Positives defined by spatial intersection thresholds.",
-        "2. Geometric Alignment Metrics:\n   • Doors & Windows: Bounding Box Intersection over Union (IoU >= 0.5).\n   • Rooms: Polygon IoU computed using exact geometric polygon intersections (Shapely).\n   • Walls: Mean endpoint distance error (tolerance <= 25 px).",
-        "3. JSON Integrity Metrics:\n   • JSON Syntax Validity Rate (% parseable without error).\n   • Pydantic Schema Validation Compliance Rate (% passing strict spatial constraints)."
-    ])
-
-    # ----------------------------------------------------
-    # Slide 12: Experimental Results (read from outputs/evaluation/summary.json only)
-    # ----------------------------------------------------
-    s12 = create_blank_slide(prs)
-    add_slide_header(s12, "Experimental Results: Held-Out Test Split")
-    summary_path = Path("outputs/evaluation/summary.json")
-    if not summary_path.exists():
-        add_bullet_points(s12, [
-            "No verified evaluation results exist yet.",
-            "Earlier reported numbers (Macro F1 1.000, etc.) were invalid and have been withdrawn: they came from leaked or simulated evaluation. Details: docs/audit/.",
-            "Results will appear here once the zero-shot, fine-tuned and OpenCV-baseline systems have been evaluated on unseen CubiCasa5K floor plans.",
-        ], top=Inches(1.8))
+    # 9 Training outcome ----------------------------------------------------------------------------
+    s = new_slide(prs)
+    header(s, "Training outcome")
+    if TRAINED and HIST:
+        last = HIST[-1]
+        bullets(s, [
+            f"Device: {TRAIN.get('device', 'n/a')}; epochs run: {len(HIST)}; best epoch {TRAIN['best_epoch']} with validation mean IoU {f3(TRAIN['best_val_mean_iou'])}.",
+            f"Train loss: {f3(HIST[0]['train_loss'])} (first epoch) to {f3(last['train_loss'])} (last epoch); validation loss at the last epoch {f3(last.get('val_loss'))}.",
+            f"Optimiser steps: {TRAIN['optimizer_steps']}; wall-clock {TRAIN['total_seconds']} s; checkpoint sha256 {str(TRAIN.get('checkpoint_sha256', ''))[:16]}...",
+            "Source: results/segmentation/train_summary.json and history.json (copied from the Colab run).",
+        ])
+        curves = RES / "training_curves.png"
+        if curves.is_file():
+            s.shapes.add_picture(str(curves), Inches(2.2), Inches(3.5), height=Inches(3.6))
     else:
-        import json
-        summary = json.loads(summary_path.read_text(encoding="utf-8"))
-        systems = summary["systems"]
-        cols = ["System", "Failed", "JSON valid", "Wall F1", "Door F1", "Window F1", "Room F1", "Macro F1"]
-        rows, cols_n = len(systems) + 1, len(cols)
-        table = s12.shapes.add_table(rows, cols_n, Inches(0.8), Inches(1.9), Inches(11.7), Inches(0.5) * rows).table
-        for j, name in enumerate(cols):
-            table.cell(0, j).text = name
-        fmt = lambda v: "n/a" if v is None else f"{v:.3f}"
-        for i, sysm in enumerate(systems, 1):
-            vals = [sysm["label"], f'{sysm["n_failed"]}/{summary["n_test_images"]}', fmt(sysm["json_validity_rate"]),
-                    fmt(sysm["f1"]["walls"]), fmt(sysm["f1"]["doors"]), fmt(sysm["f1"]["windows"]),
-                    fmt(sysm["f1"]["rooms"]), fmt(sysm["macro_f1"])]
-            for j, v in enumerate(vals):
-                table.cell(i, j).text = v
-        note = s12.shapes.add_textbox(Inches(0.8), Inches(1.9) + Inches(0.5) * rows + Inches(0.3), Inches(11.7), Inches(2.0))
-        ntf = note.text_frame
-        ntf.word_wrap = True
-        ntf.text = f'Test set: {summary["n_test_images"]} unseen floor plans. ' + " ".join(summary.get("limitations", []))
-        ntf.paragraphs[0].font.size = Pt(12)
+        bullets(s, [
+            "No training run exists. There are no loss curves, no checkpoint and no best epoch to report.",
+            "Why: the sandbox that produced this code had no GPU, no PyTorch and no access to the dataset host. Training is the Colab notebook, notebooks/colab_segmentation.ipynb.",
+            "This slide fills itself from results/segmentation/train_summary.json and history.json once a real run has been copied into the repository.",
+        ], color=RED)
 
-    # ----------------------------------------------------
-    # Slide 13: Challenges and Limitations
-    # ----------------------------------------------------
-    s13 = create_blank_slide(prs)
-    add_slide_header(s13, "Technical Challenges, Edge Cases & Practical Limitations")
-    add_bullet_points(s13, [
-        "1. Token Context Length in Dense Multi-Room Plans:\n   • Plans with many rooms may need long outputs; output length has not been measured yet.",
-        "2. Curved and Non-Manhattan Wall Geometries:\n   • Current orthogonal postprocessing assumes predominantly 90-degree drafting angles; circular walls require spline approximation.",
-        "3. Blueprint Scan Artifacts & Text Occlusion:\n   • Text callouts crossing wall lines may disrupt wall detection; not yet measured.",
-        "4. CAD Precision vs. Neural Approximation:\n   • VLM coordinates are approximate; the achieved pixel error is reported on the results slide, and postprocessing is logged so it cannot hide model errors."
+    # 10 Inference & JSON ----------------------------------------------------------------------------
+    s = new_slide(prs)
+    header(s, "Inference: checkpoint to mask to polygon JSON")
+    bullets(s, [
+        "image -> letterbox -> U-Net -> crop padding -> resize logits to the original size -> argmax -> class mask.",
+        "Per class: connected regions -> Douglas-Peucker simplification -> polygon (+ holes) in ORIGINAL pixel coordinates.",
+        "JSON: image, image_width, image_height, units, generated_by (architecture, checkpoint sha256, epoch), rooms / walls / doors / windows; each entity has id, polygon, holes, area_px.",
+        "No confidence field: the network is not calibrated, and an invented score would be fabricated data.",
+        f"Regions under {CFG['inference']['min_area_frac'] * 100:.2f}% of the image area are dropped (a visible, configurable rule).",
+        "The checkpoint is loaded strictly (exact architecture, sha256 recorded); a missing or mismatched checkpoint is an error. There is no heuristic fallback.",
     ])
 
-    # ----------------------------------------------------
-    # Slide 14: Conclusion and Future Scope
-    # ----------------------------------------------------
-    s14 = create_blank_slide(prs)
-    add_slide_header(s14, "Conclusion & Future Research Directions")
-    add_bullet_points(s14, [
-        "Status:\n  \u2022 Implemented and unit-tested: schema, letterbox preprocessing, strict JSON parsing, geometric postprocessing, evaluation, OpenCV baseline. Written but never run: LoRA trainer. Not implemented: Qwen2.5-VL generation. See the README status table.\n  \u2022 Fine-tuning is claimed only if a verified LoRA adapter exists and the evaluation above was run with it.",
-        "Next steps:\n  \u2022 Train on a larger real CubiCasa5K subset on Colab and evaluate on a larger unseen test split.\n  \u2022 Compare against zero-shot Qwen2.5-VL and the OpenCV baseline with identical metrics.\n  \u2022 Future work: 2D-to-3D IFC/BIM export, multi-storey alignment, tiled inference for very large plans."
+    # 11 Evaluation protocol --------------------------------------------------------------------------
+    s = new_slide(prs)
+    header(s, "Evaluation protocol")
+    bullets(s, [
+        "Data: the held-out test split of real plans only; ids asserted disjoint from the checkpoint's training and validation ids.",
+        "Pixel metrics at original resolution, ignore-labelled pixels excluded: per-class IoU, Dice/F1, precision, recall; confusion matrix; mean IoU / Dice; pixel accuracy.",
+        "A class absent from both ground truth and prediction is reported as n/a, never as 0 or 1.",
+        "JSON validity: serialise, re-parse and validate against the schema; failures are counted, never repaired.",
+        "Inference time: model forward + resize + argmax, and mask-to-JSON, measured separately; two warm-up images excluded.",
+        "A limitation note is attached when the test set has fewer than 100 plans.",
     ])
 
-    out_pptx = Path("presentation/Floorplan_AI_Assessment.pptx")
-    out_pptx.parent.mkdir(parents=True, exist_ok=True)
-    prs.save(str(out_pptx))
-    print(f"Successfully generated PowerPoint presentation at: {out_pptx}")
+    # 12 Results -------------------------------------------------------------------------------------
+    s = new_slide(prs)
+    header(s, "Results: held-out test plans")
+    if EVALUATED:
+        pc = EVAL["per_class"]
+        bottom = table(s, ["Class", "IoU", "Dice / F1", "Precision", "Recall"],
+                       [[c, f3(pc[c]["iou"]), f3(pc[c]["dice_f1"]), f3(pc[c]["precision"]), f3(pc[c]["recall"])] for c in EVAL["class_names"]],
+                       width=8.0, col_w=[2.4, 1.4, 1.4, 1.4, 1.4], size=13, row_h=0.45)
+        t = EVAL.get("inference_time_ms", {}) or {}
+        mf = (t.get("model_forward_resize_argmax") or {}).get("mean")
+        jm = (t.get("mask_to_json") or {}).get("mean")
+        jv = EVAL["json_validity"]
+        lines = [
+            f"Test plans: {EVAL['n_test_images']}   |   mean IoU {f3(EVAL['mean_iou'])}   |   mean Dice/F1 {f3(EVAL['mean_dice_f1'])}   |   pixel accuracy {f3(EVAL['pixel_accuracy'])}",
+            f"JSON validity: {jv['valid']}/{jv['total']}   |   mean model time {'n/a' if mf is None else f'{mf:.1f} ms'}, mask-to-JSON {'n/a' if jm is None else f'{jm:.1f} ms'} on {EVAL.get('device', 'n/a')}",
+            f"Checkpoint sha256 {str(EVAL.get('checkpoint_sha256', ''))[:16]}..., epoch {EVAL.get('checkpoint_epoch')}; test ids overlapping training/validation: {EVAL.get('test_ids_overlapping_training_or_validation')}",
+        ] + list(EVAL.get("limitations", []))
+        bullets(s, lines, top=bottom + 0.3, size=12, color=MUTED, height=2.4)
+    else:
+        bullets(s, [
+            "No evaluation results exist. The model has not been trained, so no metric can be reported.",
+            "Earlier numbers (for example Macro F1 1.000) came from leaked or simulated evaluation and were withdrawn; see docs/audit/.",
+            "This slide fills itself from results/segmentation/summary.json after a real evaluation on held-out plans.",
+        ], color=RED)
+
+    # 13 Confusion matrix ----------------------------------------------------------------------------
+    s = new_slide(prs)
+    header(s, "Confusion matrix (row-normalised: ground truth by prediction)")
+    if EVALUATED:
+        cm = EVAL["confusion_matrix_counts"]
+        rows = []
+        for i, c in enumerate(EVAL["class_names"]):
+            tot = sum(cm[i])
+            rows.append([c] + [("n/a" if tot == 0 else f"{100 * v / tot:.1f}%") for v in cm[i]] + [f"{tot:,}"])
+        table(s, ["GT \\ predicted"] + EVAL["class_names"] + ["GT pixels"], rows, size=13, row_h=0.5,
+              col_w=[2.4] + [1.4] * len(EVAL["class_names"]) + [2.6])
+        note(s, "Raw counts: results/segmentation/confusion_matrix.csv. Pixels labelled ignore are excluded.", top=5.2)
+    else:
+        bullets(s, ["Not available: no evaluation has been run."], color=RED)
+
+    # 14 Example predictions -------------------------------------------------------------------------
+    s = new_slide(prs)
+    header(s, "Example predictions: image | ground truth | prediction")
+    shown = False
+    per_csv = RES / "per_image.csv"
+    if EVALUATED and per_csv.is_file():
+        with open(per_csv, newline="", encoding="utf-8") as f:
+            per = list(csv.DictReader(f))
+        scored = [r for r in per if r.get("mean_iou") not in (None, "")]
+        picks = []
+        if per:
+            picks.append(("First test image (list order)", per[0]["image"]))
+        if scored:
+            worst = min(scored, key=lambda r: float(r["mean_iou"]))
+            if worst["image"] != picks[0][1]:
+                picks.append((f"Lowest mean IoU in the test set ({float(worst['mean_iou']):.3f})", worst["image"]))
+        y = 1.5
+        for label, name in picks[:2]:
+            img = RES / "visuals" / f"{name}.png"
+            if img.is_file():
+                note(s, label, top=y, color=DARK, size=11, height=0.3)
+                s.shapes.add_picture(str(img), Inches(1.2), Inches(y + 0.3), width=Inches(10.9))
+                y += 2.8
+                shown = True
+    if not shown:
+        bullets(s, ["No prediction images exist: no model has been trained or run.",
+                    "After a real run, this slide shows the first test image and the lowest-scoring test image, which avoids hand-picking flattering examples."], color=RED)
+
+    # 15 Limitations ---------------------------------------------------------------------------------
+    s = new_slide(prs)
+    header(s, "Limitations and what is not done")
+    bullets(s, [
+        "Not done: " + ("see results/segmentation for what was run." if (TRAINED and EVALUATED) else "training, evaluation, sample predictions and hosted weights (they need the Colab T4 run)."),
+        "The class mapping comes from the official loader code until the real-file inspection and the overlay check have been done.",
+        "Small subset and a small test split: results are indicative, with wide uncertainty.",
+        "Hash-based duplicate control cannot prove that two different files do not show the same building.",
+        "Semantic segmentation: touching instances merge; walls are regions, not centre-lines; no room types; no confidence values; no CAD snapping on the learned output.",
+        "Non-commercial / share-alike licence applies to the data and therefore to the trained weights.",
+        "The OpenCV baseline is kept only as a labelled comparison point; the Qwen2.5-VL plan was never executed.",
+    ], size=14)
+
+    # 16 Reproducibility ----------------------------------------------------------------------------
+    s = new_slide(prs)
+    header(s, "Reproducibility and deliverables")
+    bullets(s, [
+        "Repository: github.com/sandhiya-1234/FloorPlan-AI, branch repair/real-vlm-pipeline (main untouched).",
+        "Colab: notebooks/colab_segmentation.ipynb (Stage A data and overlays, manual gate, Stage B training and evaluation).",
+        "Code: training/prepare_dataset.py, train_segmentation.py; inference/predict_segmentation.py; evaluation/evaluate_segmentation.py; config/segmentation.yaml.",
+        "Dependencies: requirements-seg.txt for the experiment; dashboard and Qwen requirements are separate files.",
+        "Weights: kept outside Git. " + ("Location and sha256 are in the README." if TRAINED else "None exist yet; the link and sha256 will be added after a real run."),
+        "Tests: python -m pytest tests -q -rs (skipped tests are reported as not run, not as passed).",
+    ])
+
+    out = ROOT / "presentation" / "Floorplan_AI_Assessment.pptx"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    prs.save(str(out))
+    return out
 
 
 if __name__ == "__main__":
-    build_presentation()
+    print(f"Generated {build()}  | trained={TRAINED} evaluated={EVALUATED}")

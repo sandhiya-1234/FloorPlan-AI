@@ -4,8 +4,29 @@
 
 Architectural 2D floor plans are dense graphical blueprints encoding structural partitions (walls), circulation portals (doors), fenestrations (windows), and functional spaces (rooms). Automated extraction of these entities is critical for automated Building Information Modeling (BIM), 2D-to-3D CAD reconstruction, structural simulation, and indoor navigation.
 
-> **Status:** this page describes the intended design. Only the preprocessing (letterbox), strict parsing and the
-> geometric refinement below are implemented and unit-tested; the model stage is not trained or run yet (see README).
+> **Status:** the **active** pipeline is the segmentation pipeline in the "Active pipeline" section below (U-Net with a pretrained ResNet-18 encoder). It is implemented
+> and unit-tested, but **not trained or evaluated yet** (see README). The sections after "Original plan" describe the **original Qwen2.5-VL plan**, which was never executed and is
+> not part of the submitted result; the letterbox and the geometric refinement they mention are implemented and unit-tested, but the refinement is not used by the segmentation path.
+
+## Active pipeline: semantic segmentation to polygon JSON
+
+```
+image (H x W)
+  -> letterbox to 512x512 (aspect kept, padding white)            training/seg_common.py
+  -> U-Net, ResNet-18 encoder (ImageNet init, fine-tuned)          training/seg_model.py
+  -> logits 5 x 512 x 512 -> crop padding -> bilinear resize to H x W -> argmax
+  -> class mask: 0 Background, 1 Room, 2 Wall, 3 Door, 4 Window
+  -> per class: connected regions (cv2.findContours, RETR_CCOMP) -> Douglas-Peucker -> polygons + holes
+  -> JSON in ORIGINAL pixel coordinates, schema-validated          inference/predict_segmentation.py
+```
+
+- Every polygon vertex comes from the predicted mask. The JSON has **no confidence field** because the network is not calibrated and no honest per-entity score is computed.
+- Entities smaller than 0.02 % of the image area are dropped (`inference.min_area_frac`); this is a visible, configurable rule, not a hidden one.
+- Walls are region polygons (outer ring plus holes), not centre-lines. Rooms are connected regions of the Room class, so two rooms that touch without a wall pixel between them merge.
+- JSON validity is checked by serialising, re-parsing and validating against the `SegmentationPrediction` model; an image that fails is recorded, never repaired.
+- Training and evaluation details: `docs/training.md`, `docs/dataset.md`, `config/segmentation.yaml`.
+
+## Original plan (not executed)
 
 The system is formulated as a hybrid vision-language detection and geometric refinement pipeline:
 

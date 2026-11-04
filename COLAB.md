@@ -1,62 +1,67 @@
-# Google Colab GPU guide (T4)
+# Google Colab GPU guide (T4): U-Net / ResNet-18 segmentation
 
-Colab is where all model training and model inference run, because the development laptop has no NVIDIA GPU.
-Do **not** download the 3B base model to the laptop.
+Training and model inference run on Colab because the development laptop has no NVIDIA GPU. The whole procedure is one notebook,
+[`notebooks/colab_segmentation.ipynb`](notebooks/colab_segmentation.ipynb).
 
-**Status:** only the cells in section 2 exist today and none of them trains or runs a model. Training,
-inference and evaluation cells will be added here when those phases are implemented *and* verified.
-Nothing below has been run on Colab yet, so no outputs are shown.
+**Status: this notebook has never been run.** It was written in a sandbox with no GPU, no torch and no route to Zenodo. Its code cells were
+syntax-checked and the Python modules it calls are covered by unit tests, but no cell has produced a real output yet. Treat the first run as
+the first real test and send back any error text.
 
-## 1. Runtime
+## Open it
 
-Runtime > Change runtime type > **T4 GPU** > Save.
+Colab > File > Open notebook > GitHub tab > `sandhiya-1234/FloorPlan-AI`, branch `repair/real-vlm-pipeline`, `notebooks/colab_segmentation.ipynb`.
+Then Runtime > Change runtime type > **T4 GPU**. (Free-tier T4 sessions can disconnect; the notebook copies stage outputs to Google Drive.)
 
-## 2. Cells that are valid now
+## Stage A: data (about 5.5 GB download)
 
-### Cell 1: clone the branch and install
+| Cell | What it does | You should see |
+| :--- | :--- | :--- |
+| A1 | clone the branch, `pip install -r requirements-seg.txt`, check the GPU | `CUDA: True`, the T4 name |
+| A2 | mount Google Drive for backups | a Drive folder `floorplan_ai` |
+| A3 | download `cubicasa5k.zip` from Zenodo record 2613548 and check the md5 | `checksum OK` (it stops otherwise) |
+| A4 | `training.prepare_dataset inspect`: census of the real SVG selectors, room names, split lists | the selector counts; the cell fails if a selector never occurs |
+| A5 | `training.prepare_dataset prepare`: seeded subset from the official splits, masks, duplicate removal, overlays, `manifest.json` | counts per split, rejections, duplicate drops |
+| A6 | shows the overlay images | image on the left, ground-truth mask on the right |
+| A7 | zips `inspect_report.txt`, `prepare_report.txt`, `manifest.json` and the overlays and downloads them | two zip downloads |
+| A8 | the confirmation gate | creates `overlays_confirmed.txt` only if you set `OVERLAYS_CONFIRMED = True` |
 
-```python
-!git clone https://github.com/sandhiya-1234/FloorPlan-AI.git
-%cd FloorPlan-AI
-!git checkout repair/real-vlm-pipeline
-!git log --oneline -1
+**Stop after A7.** Look at the overlays yourself (walls on the drawn walls, doors and windows on the openings, rooms inside the walls). If you want
+an independent look, attach the two zips to the chat; the inspect report and overlays are what decide whether the mapping in
+`config/segmentation.yaml` is right. Only then set `OVERLAYS_CONFIRMED = True` and run A8.
 
-# Quote version specifiers: an unquoted ">=" is a shell redirect and silently writes a file named "=4.49.0".
-!pip install -q -r requirements-train.txt
-!pip install -q "pytest>=7.4.0"
-```
+## Stage B: model (only after the gate)
 
-Colab already ships a CUDA build of torch. If `pip` offers to replace it, keep Colab's version unless a later phase says otherwise.
-
-### Cell 2: check the GPU
-
-```python
-import torch
-print("CUDA available:", torch.cuda.is_available())
-if torch.cuda.is_available():
-    p = torch.cuda.get_device_properties(0)
-    print("Device:", p.name, "| VRAM GB:", round(p.total_memory / 1024**3, 1))
-    print("bf16 supported:", torch.cuda.is_bf16_supported())  # a T4 reports False: train in fp16
-```
-
-### Cell 3: run the test suite (including the Shapely tests)
-
-Three tests are skipped in the sandbox where the code was written, because `shapely` could not be installed there.
-With `requirements-train.txt` installed they should run here.
-
-```python
-!python -m pytest tests -q -rs
-```
-
-Read the summary line. If any test is still reported as skipped, `-rs` prints the reason. Skipped is not passed.
-
-## 3. Cells to be added later (not available yet)
-
-| Phase | What the cells will do |
+| Cell | What it does |
 | :--- | :--- |
-| 2 | download a small CubiCasa5K subset, convert annotations, write overlay images, run leakage checks |
-| 3 | 8-image overfit sanity run, then LoRA/QLoRA training with a saved run manifest |
-| 4 | verify the adapter against the base model, then generate JSON from images and save raw outputs |
-| 5 | run zero-shot Qwen, fine-tuned Qwen + LoRA and the OpenCV baseline on the test split, then evaluate |
+| B1 | `pytest tests`: the whole suite, including the torch tests and the Shapely tests that could not run in the sandbox. Fix failures before training |
+| B2 | `--overfit 8` sanity run: trains and validates on the same 8 real images. It shows that the code can learn; it is labelled `overfit_sanity` and evaluation refuses its checkpoint |
+| B3 | full training: ImageNet-pretrained ResNet-18 encoder + U-Net decoder, AdamW, CE + Dice, fp16 autocast, 512x512, batch 4, best checkpoint by validation mean IoU |
+| B4 | training curves read from `history.json` |
+| B5 | evaluation on the held-out test split; aborts on any id overlap with training or validation |
+| B6 | image / ground truth / prediction panels |
+| B7 | zips `results/segmentation/` (small, Git-safe) and copies `best.pt` to Drive; prints the checkpoint sha256 |
 
-Until Phase 3 has run, `artifacts/adapters/final_lora_adapter/` is empty and `inference/predict.py` raises on purpose.
+## Where things end up
+
+| Artifact | Location | In Git? |
+| :--- | :--- | :---: |
+| prepared data and overlays | `data/seg/` (Colab disk) | no |
+| checkpoint `best.pt`, `history.json`, `config.json`, `train_summary.json` | `runs/seg/unet_resnet18/` (Colab disk), copy on Drive | **no** (weights stay out of Git) |
+| metrics, confusion matrix, per-image table, prediction JSON, visual panels | `results/segmentation/` | yes, after verification |
+
+The weights are small (an estimate from the parameter count, roughly 14 million parameters or about 55-60 MB in fp32; the real size is recorded in `train_summary.json`). They are not committed. After a real run they should be uploaded as a GitHub Release asset or a Drive
+link with the sha256 printed by B7; that link and hash then go into the README. Until then no download link exists.
+
+## Run inference on your own plans (after training)
+
+```bash
+python inference/predict_segmentation.py --checkpoint runs/seg/unet_resnet18/best.pt \
+    --image-dir <folder of png/jpg plans> --out-dir outputs/segmentation_predictions --save-masks
+```
+
+It fails loudly if the checkpoint is missing or does not match the architecture. It never falls back to the OpenCV baseline.
+
+## If something fails
+
+Copy the full cell output. Typical, expected stops: md5 mismatch (incomplete download), `inspect` exit 1 (a selector is absent from the real files, so the
+mapping must be corrected, not worked around), `UnmappedCategory` / rejections in `prepare` (a room name missing from the config), or the gate refusing to train.
