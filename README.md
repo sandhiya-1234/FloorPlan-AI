@@ -9,6 +9,8 @@ Why a segmentation network and not a vision-language model: [`docs/training.md`]
 
 ## Current status (read this first)
 
+> For the packaged summary of what is implemented, what was actually executed and what is incomplete, see [`SUBMISSION_STATUS.md`](SUBMISSION_STATUS.md).
+
 > **The model has not been trained and nothing has been evaluated.** The training, inference and evaluation code is written and its
 > hardware-independent parts are unit-tested, but the environment that produced it had no GPU, no PyTorch and no route to the dataset host.
 > There are therefore **no weights, no metrics, no prediction samples and no result figures** in this repository. The first real run is
