@@ -54,6 +54,7 @@ def evaluate_split(
     out_dir = Path(out_dir)
     (out_dir / "predictions").mkdir(parents=True, exist_ok=True)
     (out_dir / "visuals").mkdir(parents=True, exist_ok=True)
+    (out_dir / "pred_masks").mkdir(parents=True, exist_ok=True)
 
     total_cm = np.zeros((n_cls, n_cls), np.int64)
     per_image: List[Dict[str, Any]] = []
@@ -85,6 +86,7 @@ def evaluate_split(
         per_image.append({"image": name, "mean_iou": ious["mean_iou"], "valid_json": valid_json, **counts,
                           **{f"iou_{c}": ious["per_class"][c]["iou"] for c in names}})
         preds[name] = pred_mask
+        cv2.imwrite(str(out_dir / "pred_masks" / f"{name}.png"), pred_mask)   # class ids: 0 BG, 1 Room, 2 Wall, 3 Door, 4 Window
 
     summary_metrics = metrics_from_confusion(total_cm, names)
     ranked = sorted((p for p in per_image if p["mean_iou"] is not None), key=lambda p: p["mean_iou"])
@@ -181,7 +183,7 @@ def main() -> None:
     summary = evaluate_split(list(_load_real_samples(data_dir, args.split, names)), predict_fn, cfg, out_dir, gen, args.n_visuals)
 
     run_dir = Path(args.checkpoint).parent
-    for fname in ("history.json", "train_summary.json", "config.json"):
+    for fname in ("history.json", "training_history.csv", "train_summary.json", "config.json"):
         if (run_dir / fname).is_file():
             (out_dir / fname).write_text((run_dir / fname).read_text(encoding="utf-8"), encoding="utf-8")
     summary.update({

@@ -93,6 +93,7 @@ def test_evaluate_split_perfect_prediction_gives_perfect_scores_and_valid_json(t
     assert (tmp_path / "metrics.json").is_file() and (tmp_path / "confusion_matrix.csv").is_file()
     assert len(list((tmp_path / "predictions").glob("*.json"))) == 3 and len(list((tmp_path / "visuals").glob("*.png"))) >= 1
     assert summary["limitations"]                                    # 3 images: small-test-set warning
+    assert len(list((tmp_path / "pred_masks").glob("*.png"))) == 3    # predicted class masks are saved
 
 
 def test_evaluate_split_counts_errors_and_matches_hand_computation(tmp_path):

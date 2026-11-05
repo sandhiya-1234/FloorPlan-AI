@@ -109,6 +109,20 @@ class SegLoss:
 
 # --------------------------------------------------------------------------------- utilities
 
+
+def _write_history_csv(path: Path, history: List[Dict[str, Any]]) -> None:
+    """Flat CSV view of history.json (per-class validation IoU expanded into val_iou_<class> columns)."""
+    import csv
+    rows = []
+    for r in history:
+        flat = {k: v for k, v in r.items() if k != "val_iou_per_class"}
+        flat.update({f"val_iou_{k}": v for k, v in (r.get("val_iou_per_class") or {}).items()})
+        rows.append(flat)
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=list(rows[0]))
+        w.writeheader()
+        w.writerows(rows)
+
 def seed_everything(seed: int) -> None:
     random.seed(seed)
     np.random.seed(seed)
@@ -253,6 +267,7 @@ def train(cfg: Dict[str, Any], data_dir: Path, run_dir: Path, overfit: int = 0, 
                "epoch_seconds": round(time.time() - t0, 1), "optimizer_steps_total": steps}
         history.append(rec)
         _atomic_json(run_dir / "history.json", history)
+        _write_history_csv(run_dir / "training_history.csv", history)
         print(f"epoch {epoch:3d}/{epochs}  train {rec['train_loss']:.4f}  val {val_loss:.4f}  val mIoU {score:.4f}  "
               f"({rec['epoch_seconds']}s)  IoU " + " ".join(f"{k[:3]}={'-' if v is None else f'{v:.2f}'}" for k, v in rec["val_iou_per_class"].items()))
         if score > best:
